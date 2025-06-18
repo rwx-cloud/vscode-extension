@@ -16,11 +16,66 @@ import {
   LocationLink,
   Range,
   Position,
+  Hover,
+  MarkupKind,
 } from 'vscode-languageserver/node';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import * as path from 'path';
 import { YamlParser } from '../support/parser';
+
+// RWX Package types
+interface RWXPackage {
+  version: string;
+  description: string;
+}
+
+interface RWXPackagesResponse {
+  [packageName: string]: RWXPackage;
+}
+
+// Package cache - cache for 1 hour
+const packageCache: { data: RWXPackagesResponse | null; timestamp: number } = {
+  data: null,
+  timestamp: 0
+};
+
+const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+
+// Fetch RWX packages from the API
+async function fetchRWXPackages(): Promise<RWXPackagesResponse | null> {
+  const now = Date.now();
+  
+  // Return cached data if it's still valid
+  if (packageCache.data && (now - packageCache.timestamp) < CACHE_DURATION) {
+    return packageCache.data;
+  }
+  
+  try {
+    const response = await fetch('https://cloud.rwx.com/mint/api/leaves/documented', {
+      headers: {
+        Accept: 'application/json,*/*',
+        'User-Agent': 'rwx-docs-leaves-index/1',
+      },
+    });
+    
+    if (!response.ok) {
+      console.error('Failed to fetch RWX packages:', response.status, response.statusText);
+      return packageCache.data; // Return cached data if available
+    }
+    
+    const data = await response.json() as RWXPackagesResponse;
+    
+    // Update cache
+    packageCache.data = data;
+    packageCache.timestamp = now;
+    
+    return data;
+  } catch (error) {
+    console.error('Error fetching RWX packages:', error);
+    return packageCache.data; // Return cached data if available
+  }
+}
 
 // Create a connection for the server, using Node's IPC as a transport.
 const connection = createConnection(ProposedFeatures.all);
@@ -50,6 +105,7 @@ connection.onInitialize((params: InitializeParams) => {
         workspaceDiagnostics: false,
       },
       definitionProvider: true,
+      hoverProvider: true,
     },
   };
   if (hasWorkspaceFolderCapability) {
@@ -251,7 +307,31 @@ function escapeRegExp(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Helper function to extract package name from a call line
+function extractPackageFromCallLine(line: string): string | null {
+  // Match pattern: "call: package-name version" or "  call: package-name version"
+  const callPattern = /^\s*call:\s*([^\s]+)/;
+  const match = line.match(callPattern);
+  return match && match[1] ? match[1] : null;
+}
 
+
+
+// Helper function to check if position is in a 'call' context
+function isInCallContext(document: TextDocument, position: { line: number; character: number }): boolean {
+  const lines = document.getText().split('\n');
+  const currentLineIndex = position.line;
+  const currentLine = lines[currentLineIndex] || '';
+  const beforeCursor = currentLine.substring(0, position.character);
+  
+  // Check if we're in a call declaration: "call: value"
+  const callPattern = /\s*call:\s*/;
+  if (callPattern.test(beforeCursor)) {
+    return true;
+  }
+  
+  return false;
+}
 
 // Helper function to check if position is in a 'use' context  
 function isInUseContext(document: TextDocument, position: { line: number; character: number }): boolean {
@@ -303,7 +383,7 @@ connection.onCompletion(async (textDocumentPosition: TextDocumentPositionParams)
     return [];
   }
 
-  // Check if we're in a 'use' context - if not, return empty array to let other providers handle it
+  // Check if we're in a 'use' context for task completions
   if (isInUseContext(document, textDocumentPosition.position)) {
     try {
       // Parse the document to get available task keys
@@ -325,6 +405,29 @@ connection.onCompletion(async (textDocumentPosition: TextDocumentPositionParams)
       }));
     } catch (error) {
       connection.console.error(`Error getting task completions: ${error instanceof Error ? error.message : String(error)}`);
+      return [];
+    }
+  }
+
+  // Check if we're in a 'call' context for RWX package completions
+  if (isInCallContext(document, textDocumentPosition.position)) {
+    try {
+      const packages = await fetchRWXPackages();
+      if (!packages) {
+        return [];
+      }
+
+      // Convert packages to completion items
+      return Object.entries(packages).map(([packageName, packageInfo], index) => ({
+        label: packageName,
+        kind: CompletionItemKind.Module,
+        detail: `v${packageInfo.version}`,
+        documentation: packageInfo.description,
+        data: `package-${index}`,
+        insertText: `${packageName} ${packageInfo.version}`,
+      }));
+    } catch (error) {
+      connection.console.error(`Error getting package completions: ${error instanceof Error ? error.message : String(error)}`);
       return [];
     }
   }
@@ -416,6 +519,54 @@ connection.onDefinition(async (params: TextDocumentPositionParams): Promise<Loca
   };
   
   return [locationLink];
+});
+
+// Hover provider
+connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | null> => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document || !isMintWorkflowFile(document)) {
+    return null;
+  }
+  
+  const lines = document.getText().split('\n');
+  const currentLine = lines[params.position.line];
+  
+  if (!currentLine) {
+    return null;
+  }
+  
+  // Check if this line contains a call declaration
+  const packageName = extractPackageFromCallLine(currentLine);
+  if (!packageName) {
+    return null;
+  }
+  
+  try {
+    // Fetch package information
+    const packages = await fetchRWXPackages();
+    if (!packages || !packages[packageName]) {
+      return null;
+    }
+    
+    const packageInfo = packages[packageName];
+    
+    // Create hover content with package description
+    const hoverContent = {
+      kind: MarkupKind.Markdown,
+      value: [
+        `**${packageName}** v${packageInfo.version}`,
+        '',
+        packageInfo.description
+      ].join('\n')
+    };
+    
+    return {
+      contents: hoverContent
+    };
+  } catch (error) {
+    connection.console.error(`Error getting hover info: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
 });
 
 // Register debug command handler
