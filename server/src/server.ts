@@ -158,7 +158,7 @@ connection.onInitialize((params: InitializeParams) => {
       textDocumentSync: TextDocumentSyncKind.Incremental,
       completionProvider: {
         resolveProvider: true,
-        triggerCharacters: [' ', '[', ','],
+        triggerCharacters: [' ', '[', ',', ':', '\n'],
       },
       diagnosticProvider: {
         interFileDependencies: false,
@@ -402,29 +402,31 @@ function isInWithContext(document: TextDocument, position: { line: number; chara
   const beforeCursor = currentLine.substring(0, position.character);
   
   // Check if we're directly on a 'with:' line after the colon (for empty with blocks)
-  const withPattern = /^\s*with:\s*$/;
-  if (withPattern.test(beforeCursor)) {
+  if (/^\s*with:\s*$/.test(beforeCursor)) {
     return true;
   }
   
-  // Check if we're on an indented line under 'with:' at the beginning of the line
-  // This handles both empty lines and lines where we're typing a new parameter name
-  if (/^\s*$/.test(beforeCursor) || /^\s+[a-zA-Z0-9_-]*$/.test(beforeCursor)) {
-    // Look backwards to find the 'with:' declaration
+  // Check if we're on an indented line under 'with:' 
+  // This handles empty lines, lines where we're typing parameter names, or right after 'with:'
+  const currentIndent = currentLine.match(/^\s*/)?.[0].length || 0;
+  
+  // If we're on an indented line, look backwards to find the 'with:' declaration
+  if (currentIndent > 0 || /^\s*$/.test(beforeCursor)) {
     for (let i = currentLineIndex - 1; i >= 0; i--) {
       const prevLine = lines[i];
       if (!prevLine || prevLine.trim() === '') continue;
       
-      // If we hit a line with equal or less indentation that's not 'with:', we're not in a with block
-      const currentIndent = currentLine.match(/^\s*/)?.[0].length || 0;
       const prevIndent = prevLine.match(/^\s*/)?.[0].length || 0;
       
-      if (prevIndent < currentIndent) {
-        // Check if this is a 'with:' line
+      // If we hit a line with equal or less indentation, check if it's 'with:'
+      if (prevIndent <= currentIndent) {
         if (/^\s*with:\s*$/.test(prevLine)) {
           return true;
         }
-        break;
+        // If we hit another task-level key, we're no longer in the with block
+        if (/^\s*-?\s*(key|call|use|run|with):\s/.test(prevLine)) {
+          break;
+        }
       }
     }
   }
