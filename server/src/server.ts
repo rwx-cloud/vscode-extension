@@ -26,6 +26,7 @@ import {
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import * as path from 'path';
+import * as fs from 'fs';
 import { YamlParser } from '../support/parser';
 
 // RWX Package types
@@ -162,7 +163,7 @@ connection.onInitialize((params: InitializeParams) => {
       textDocumentSync: TextDocumentSyncKind.Incremental,
       completionProvider: {
         resolveProvider: true,
-        triggerCharacters: [' ', '[', ',', ':', '\n'],
+        triggerCharacters: [' ', '[', ',', ':', '\n', '/'],
       },
       diagnosticProvider: {
         interFileDependencies: false,
@@ -378,6 +379,80 @@ function escapeRegExp(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Helper function to find the parent .mint or .rwx directory
+function findMintDirectory(filePath: string): string | null {
+  let currentDir = path.dirname(filePath);
+  
+  while (currentDir !== path.dirname(currentDir)) { // Stop at filesystem root
+    const dirName = path.basename(currentDir);
+    if (dirName === '.mint' || dirName === '.rwx') {
+      return currentDir;
+    }
+    currentDir = path.dirname(currentDir);
+  }
+  
+  return null;
+}
+
+// Helper function to get file and directory completions from a directory
+async function getFileCompletions(baseDir: string, relativePath: string = ''): Promise<CompletionItem[]> {
+  try {
+    const searchDir = path.join(baseDir, relativePath);
+    
+    // Check if the directory exists
+    if (!fs.existsSync(searchDir) || !fs.statSync(searchDir).isDirectory()) {
+      return [];
+    }
+    
+    const entries = fs.readdirSync(searchDir, { withFileTypes: true });
+    const completions: CompletionItem[] = [];
+    
+    for (const entry of entries) {
+      // Skip hidden files and directories (starting with .)
+      if (entry.name.startsWith('.')) {
+        continue;
+      }
+      
+      
+      if (entry.isDirectory()) {
+        completions.push({
+          label: entry.name,
+          kind: CompletionItemKind.Folder,
+          detail: 'Directory',
+          insertText: `${entry.name}/`,
+          data: `dir-${entry.name}`,
+        });
+      } else if (entry.isFile()) {
+        // Only include YAML files for Mint workflows
+        if (entry.name.endsWith('.yml') || entry.name.endsWith('.yaml')) {
+          completions.push({
+            label: entry.name,
+            kind: CompletionItemKind.File,
+            detail: 'Mint workflow file',
+            insertText: entry.name,
+            data: `file-${entry.name}`,
+          });
+        }
+      }
+    }
+    
+    return completions.sort((a, b) => {
+      // Sort directories first, then files
+      if (a.kind === CompletionItemKind.Folder && b.kind === CompletionItemKind.File) {
+        return -1;
+      }
+      if (a.kind === CompletionItemKind.File && b.kind === CompletionItemKind.Folder) {
+        return 1;
+      }
+      // Within same type, sort alphabetically
+      return a.label.localeCompare(b.label);
+    });
+  } catch (error) {
+    connection.console.error(`Error getting file completions: ${error instanceof Error ? error.message : String(error)}`);
+    return [];
+  }
+}
+
 // Helper function to extract package name and version from a call line
 function extractPackageAndVersionFromCallLine(line: string): { packageName: string; version: string } | null {
   // Match pattern: "call: package-name version" or "  call: package-name version"
@@ -403,6 +478,79 @@ function isInCallContext(document: TextDocument, position: { line: number; chara
   }
 
   return false;
+}
+
+// Helper function to check if position is in an embedded run call context
+function isInEmbeddedRunCallContext(document: TextDocument, position: { line: number; character: number }): { isInContext: boolean; relativePath: string } {
+  const lines = document.getText().split('\n');
+  const currentLineIndex = position.line;
+  const currentLine = lines[currentLineIndex] || '';
+  const beforeCursor = currentLine.substring(0, position.character);
+
+  // Check if we're in a call context that contains ${{ run.mint-dir }}/
+  const embeddedRunPattern = /\s*call:\s*\$\{\{\s*run\.mint-dir\s*\}\}\//;
+  const match = beforeCursor.match(embeddedRunPattern);
+  
+  if (match) {
+    // Extract the path after ${{ run.mint-dir }}/
+    const afterMintDir = beforeCursor.substring(match.index! + match[0].length);
+    return { isInContext: true, relativePath: afterMintDir };
+  }
+
+  return { isInContext: false, relativePath: '' };
+}
+
+// Helper function to extract file path from embedded run call line
+function extractEmbeddedRunFilePath(line: string): string | null {
+  // Match pattern: "call: ${{ run.mint-dir }}/path/to/file.yml"
+  const embeddedRunPattern = /\s*call:\s*\$\{\{\s*run\.mint-dir\s*\}\}\/(.+)/;
+  const match = line.match(embeddedRunPattern);
+  
+  if (match && match[1]) {
+    return match[1].trim();
+  }
+  
+  return null;
+}
+
+// Helper function to check if position is within an embedded run file path for go-to-definition
+function getEmbeddedRunFilePathAtPosition(document: TextDocument, position: Position): { filePath: string; range: Range } | null {
+  const lines = document.getText().split('\n');
+  const currentLine = lines[position.line];
+  
+  if (!currentLine) {
+    return null;
+  }
+  
+  // Check if this line contains an embedded run call
+  const filePath = extractEmbeddedRunFilePath(currentLine);
+  if (!filePath) {
+    return null;
+  }
+  
+  // Find the start and end positions of the file path in the line
+  const embeddedRunPattern = /(\s*call:\s*\$\{\{\s*run\.mint-dir\s*\}\}\/)(.+)/;
+  const match = currentLine.match(embeddedRunPattern);
+  
+  if (!match) {
+    return null;
+  }
+  
+  const prefixLength = match[1]?.length || 0;
+  const filePathStart = prefixLength;
+  const filePathEnd = prefixLength + (match[2]?.length || 0);
+  
+  // Check if the cursor position is within the file path
+  if (position.character >= filePathStart && position.character <= filePathEnd) {
+    const range = Range.create(
+      Position.create(position.line, filePathStart),
+      Position.create(position.line, filePathEnd)
+    );
+    
+    return { filePath, range };
+  }
+  
+  return null;
 }
 
 // Helper function to check if position is in a 'with:' parameter context
@@ -619,6 +767,26 @@ connection.onCompletion(async (textDocumentPosition: TextDocumentPositionParams)
     }
   }
 
+  // Check if we're in an embedded run call context for file path completions
+  const embeddedRunContext = isInEmbeddedRunCallContext(document, textDocumentPosition.position);
+  if (embeddedRunContext.isInContext) {
+    try {
+      // Find the .mint or .rwx directory
+      const filePath = document.uri.replace('file://', '');
+      const mintDir = findMintDirectory(filePath);
+      
+      if (!mintDir) {
+        return [];
+      }
+
+      // Get file completions from the mint directory
+      return await getFileCompletions(mintDir, embeddedRunContext.relativePath);
+    } catch (error) {
+      connection.console.error(`Error getting file path completions: ${error instanceof Error ? error.message : String(error)}`);
+      return [];
+    }
+  }
+
   // Check if we're in a 'call' context for RWX package completions
   if (isInCallContext(document, textDocumentPosition.position)) {
     try {
@@ -735,7 +903,45 @@ connection.onDefinition(async (params: TextDocumentPositionParams): Promise<Loca
     return null;
   }
 
-  // Check if we're in a use context
+  // Check if we're clicking on an embedded run file path
+  const embeddedRunInfo = getEmbeddedRunFilePathAtPosition(document, params.position);
+  if (embeddedRunInfo) {
+    try {
+      // Find the .mint or .rwx directory
+      const currentFilePath = document.uri.replace('file://', '');
+      const mintDir = findMintDirectory(currentFilePath);
+      
+      if (!mintDir) {
+        return null;
+      }
+
+      // Construct the target file path
+      const targetFilePath = path.join(mintDir, embeddedRunInfo.filePath);
+      
+      // Check if the file exists
+      if (!fs.existsSync(targetFilePath)) {
+        return null;
+      }
+
+      // Create the target URI
+      const targetUri = `file://${targetFilePath}`;
+
+      // Return a LocationLink to the target file
+      const locationLink: LocationLink = {
+        originSelectionRange: embeddedRunInfo.range,
+        targetUri: targetUri,
+        targetRange: Range.create(Position.create(0, 0), Position.create(0, 0)),
+        targetSelectionRange: Range.create(Position.create(0, 0), Position.create(0, 0))
+      };
+
+      return [locationLink];
+    } catch (error) {
+      connection.console.error(`Error in embedded run go-to-definition: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  // Check if we're in a use context for task definitions
   if (!isInUseContext(document, params.position)) {
     return null;
   }
