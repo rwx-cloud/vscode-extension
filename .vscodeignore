@@ -1,0 +1,50 @@
+# Source files
+src/
+client/src/
+server/src/
+*.ts
+*.map
+
+# Node modules
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# TypeScript config
+tsconfig.json
+client/tsconfig.json
+server/tsconfig.json
+*.tsbuildinfo
+
+# Test files
+test/
+*.test.ts
+*.test.js
+
+# Development files
+.gitignore
+.eslintrc.json
+.prettierrc
+
+# Documentation
+README.md
+CHANGELOG.md
+
+# Build scripts
+scripts/
+
+# Packaging files
+vsc-extension-quickstart.md
+
+# Logs
+*.log
+
+# Temporary files
+.tmp/
+temp/
+
+# Coverage
+coverage/
+
+# Debug files
+test/debug-test.js

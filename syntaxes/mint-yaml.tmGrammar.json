@@ -1,0 +1,10 @@
+{
+  "name": "Mint YAML",
+  "scopeName": "source.yaml.mint",
+  "fileTypes": ["yml", "yaml"],
+  "patterns": [
+    {
+      "include": "source.yaml"
+    }
+  ]
+}

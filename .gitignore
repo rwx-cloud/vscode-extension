@@ -1,0 +1,55 @@
+# Compiled output
+out/
+client/out/
+server/out/
+
+# Extension packages
+*.vsix
+
+# Node modules
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# TypeScript build info
+*.tsbuildinfo
+client/*.tsbuildinfo
+server/*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Dependency directories
+.npm
+
+# Optional npm cache directory
+.npm
+
+# ESLint cache
+.eslintcache
+
+# VS Code directories
+.vscode/settings.json
+.vscode/launch.json
+.vscode/extensions.json
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Test files
+test/debug-test.js

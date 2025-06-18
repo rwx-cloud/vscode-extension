@@ -1,0 +1,85 @@
+{
+  "name": "mint-language-support",
+  "displayName": "Mint Language Support",
+  "description": "Language support for Mint workflow files",
+  "version": "0.1.0",
+  "publisher": "rwx",
+  "icon": "icons/rwx-icon.png",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "mint",
+    "yaml",
+    "workflow",
+    "ci/cd"
+  ],
+  "main": "./client/out/extension",
+  "contributes": {
+    "languages": [
+      {
+        "id": "mint-yaml",
+        "aliases": [
+          "Mint YAML",
+          "mint-yaml"
+        ],
+        "extensions": [
+          ".yml",
+          ".yaml"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/rwx-icon.png",
+          "dark": "./icons/rwx-icon.png"
+        },
+        "filenames": [],
+        "filenamePatterns": [
+          "**/.mint/*.yml",
+          "**/.mint/*.yaml",
+          "**/.rwx/*.yml", 
+          "**/.rwx/*.yaml"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mint-yaml",
+        "scopeName": "source.yaml.mint",
+        "path": "./syntaxes/mint-yaml.tmGrammar.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "mint.dumpDebugData",
+        "title": "Mint: Dump Debug Data",
+        "category": "Mint"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "mint-icons",
+        "label": "Mint File Icons",
+        "path": "./icons/mint-icon-theme.json"
+      }
+    ]
+  },
+  "activationEvents": [
+    "onLanguage:yaml"
+  ],
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -b",
+    "watch": "tsc -b -w",
+    "postinstall": "cd client && npm install && cd ../server && npm install",
+    "test": "sh ./scripts/e2e.sh"
+  },
+  "devDependencies": {
+    "@types/node": "18.x",
+    "@types/vscode": "^1.74.0",
+    "@vscode/test-electron": "^2.3.0",
+    "typescript": "^5.0.0"
+  }
+}

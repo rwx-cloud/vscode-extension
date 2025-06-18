@@ -1,0 +1,16 @@
+{
+  "iconDefinitions": {
+    "mint-yaml": {
+      "iconPath": "./rwx-icon.png"
+    }
+  },
+  "fileExtensions": {},
+  "fileNames": {},
+  "languageIds": {
+    "mint-yaml": "mint-yaml"
+  },
+  "folderNames": {
+    ".mint": "mint-yaml",
+    ".rwx": "mint-yaml"
+  }
+}
