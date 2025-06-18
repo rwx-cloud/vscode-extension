@@ -28,9 +28,11 @@ export function activate(context: ExtensionContext) {
 
   // Options to control the language client
   const clientOptions: LanguageClientOptions = {
-    // Register the server for all yaml files - we'll filter in the server
+    // Register the server for mint-yaml language and yaml files in mint/rwx directories
     documentSelector: [
-      { scheme: 'file', language: 'yaml' },
+      { scheme: 'file', language: 'mint-yaml' },
+      { scheme: 'file', language: 'yaml', pattern: '**/.mint/**/*.{yml,yaml}' },
+      { scheme: 'file', language: 'yaml', pattern: '**/.rwx/**/*.{yml,yaml}' },
       { scheme: 'file', pattern: '**/.mint/**/*.{yml,yaml}' },
       { scheme: 'file', pattern: '**/.rwx/**/*.{yml,yaml}' },
     ],

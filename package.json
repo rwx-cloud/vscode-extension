@@ -26,16 +26,11 @@
           "Mint YAML",
           "mint-yaml"
         ],
-        "extensions": [
-          ".yml",
-          ".yaml"
-        ],
         "configuration": "./language-configuration.json",
         "icon": {
           "light": "./icons/rwx-icon.png",
           "dark": "./icons/rwx-icon.png"
         },
-        "filenames": [],
         "filenamePatterns": [
           "**/.mint/*.yml",
           "**/.mint/*.yaml",
@@ -67,6 +62,7 @@
     ]
   },
   "activationEvents": [
+    "onLanguage:mint-yaml",
     "onLanguage:yaml"
   ],
   "scripts": {

@@ -1,0 +1,11 @@
+tasks:
+  - key: build
+    run: npm run build
+  - key: test
+    use: build
+    run: npm test
+  - key: deploy
+    use: [build, test]
+    run: npm run deploy
+  - key: incomplete
+    use: 
