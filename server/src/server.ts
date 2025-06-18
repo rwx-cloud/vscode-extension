@@ -34,11 +34,34 @@ interface RWXPackagesResponse {
   [packageName: string]: RWXPackage;
 }
 
+// Detailed package info from version endpoint
+interface RWXPackageParameter {
+  name: string;
+  required: boolean | null;
+  default: string;
+  description: string;
+}
+
+interface RWXPackageDetails {
+  name: string;
+  version: string;
+  readme: string;
+  digest: string;
+  published: boolean;
+  description: string;
+  source_code_url: string;
+  issue_tracker_url: string;
+  parameters: RWXPackageParameter[];
+}
+
 // Package cache - cache for 1 hour
 const packageCache: { data: RWXPackagesResponse | null; timestamp: number } = {
   data: null,
   timestamp: 0
 };
+
+// Package details cache - cache indefinitely
+const packageDetailsCache: Map<string, RWXPackageDetails> = new Map();
 
 const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
 
@@ -74,6 +97,43 @@ async function fetchRWXPackages(): Promise<RWXPackagesResponse | null> {
   } catch (error) {
     console.error('Error fetching RWX packages:', error);
     return packageCache.data; // Return cached data if available
+  }
+}
+
+// Fetch detailed package information for a specific version
+async function fetchPackageDetails(packageName: string, version: string): Promise<RWXPackageDetails | null> {
+  const cacheKey = `${packageName}@${version}`;
+  
+  // Return cached data if available
+  if (packageDetailsCache.has(cacheKey)) {
+    return packageDetailsCache.get(cacheKey)!;
+  }
+  
+  try {
+    const url = `https://cloud.rwx.com/mint/api/leaves/${packageName}/${encodeURIComponent(version)}/documentation`;
+    console.log('Fetching package details from:', url); // Debug logging
+    
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/json,*/*',
+        'User-Agent': 'rwx-docs-leaves-index/1',
+      },
+    });
+    
+    if (!response.ok) {
+      console.error('Failed to fetch package details:', response.status, response.statusText, 'URL:', url);
+      return null;
+    }
+    
+    const data = await response.json() as RWXPackageDetails;
+    
+    // Cache the result indefinitely
+    packageDetailsCache.set(cacheKey, data);
+    
+    return data;
+  } catch (error) {
+    console.error('Error fetching package details:', error);
+    return null;
   }
 }
 
@@ -307,13 +367,14 @@ function escapeRegExp(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Helper function to extract package name from a call line
-function extractPackageFromCallLine(line: string): string | null {
+// Helper function to extract package name and version from a call line
+function extractPackageAndVersionFromCallLine(line: string): { packageName: string; version: string } | null {
   // Match pattern: "call: package-name version" or "  call: package-name version"
-  const callPattern = /^\s*call:\s*([^\s]+)/;
+  const callPattern = /^\s*call:\s*([^\s]+)\s+([^\s]+)/;
   const match = line.match(callPattern);
-  return match && match[1] ? match[1] : null;
+  return match && match[1] && match[2] ? { packageName: match[1], version: match[2] } : null;
 }
+
 
 
 
@@ -535,29 +596,68 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
     return null;
   }
   
-  // Check if this line contains a call declaration
-  const packageName = extractPackageFromCallLine(currentLine);
-  if (!packageName) {
+  // Check if this line contains a call declaration with package and version
+  const packageInfo = extractPackageAndVersionFromCallLine(currentLine);
+  if (!packageInfo) {
     return null;
   }
   
   try {
-    // Fetch package information
-    const packages = await fetchRWXPackages();
-    if (!packages || !packages[packageName]) {
+    // Fetch detailed package information for the specific version
+    const packageDetails = await fetchPackageDetails(packageInfo.packageName, packageInfo.version);
+    if (!packageDetails) {
       return null;
     }
     
-    const packageInfo = packages[packageName];
-    
-    // Create hover content with package description
+    // Build hover content with detailed information
+    const hoverParts = [
+      `**${packageDetails.name}** v${packageDetails.version}`,
+      '',
+      packageDetails.description,
+      ''
+    ];
+
+    // Add source code URL if available
+    if (packageDetails.source_code_url) {
+      hoverParts.push(`**Source Code:** ${packageDetails.source_code_url}`);
+    }
+
+    // Add issue tracker URL if available
+    if (packageDetails.issue_tracker_url) {
+      hoverParts.push('', `**Issues:** ${packageDetails.issue_tracker_url}`);
+    }
+
+    // Add parameters if available
+    if (packageDetails.parameters && packageDetails.parameters.length > 0) {
+      hoverParts.push('', '**Parameters:**');
+      
+      // Sort parameters: required first, then by name
+      const sortedParams = [...packageDetails.parameters].sort((a, b) => {
+        // Required parameters come first
+        if (a.required && !b.required) return -1;
+        if (!a.required && b.required) return 1;
+        
+        // Within same required status, sort alphabetically by name
+        return a.name.localeCompare(b.name);
+      });
+      
+      sortedParams.forEach(param => {
+        let paramInfo = `- \`${param.name}\``;
+        
+        if (param.required) {
+          paramInfo += ' **(required)**';
+        } else if (param.default) {
+          paramInfo += ` *(default: "${param.default}")*`;
+        }
+        
+        paramInfo += `: ${param.description}`;
+        hoverParts.push(paramInfo);
+      });
+    }
+
     const hoverContent = {
       kind: MarkupKind.Markdown,
-      value: [
-        `**${packageName}** v${packageInfo.version}`,
-        '',
-        packageInfo.description
-      ].join('\n')
+      value: hoverParts.join('\n')
     };
     
     return {
