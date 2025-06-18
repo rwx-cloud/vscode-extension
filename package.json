@@ -76,6 +76,11 @@
     "postinstall": "cd client && npm install && cd ../server && npm install",
     "test": "sh ./scripts/e2e.sh"
   },
+  "dependencies": {
+    "vscode-languageclient": "^8.1.0",
+    "vscode-languageserver": "^8.1.0",
+    "vscode-languageserver-textdocument": "^1.0.8"
+  },
   "devDependencies": {
     "@types/node": "18.x",
     "@types/vscode": "^1.74.0",

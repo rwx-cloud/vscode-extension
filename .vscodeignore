@@ -5,8 +5,10 @@ server/src/
 *.ts
 *.map
 
-# Node modules
-node_modules/
+# Node modules (exclude dev dependencies but include runtime dependencies)
+node_modules/@types/
+node_modules/@vscode/
+node_modules/typescript/
 client/node_modules/
 server/node_modules/
 
