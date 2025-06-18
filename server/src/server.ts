@@ -18,6 +18,10 @@ import {
   Position,
   Hover,
   MarkupKind,
+  CodeAction,
+  CodeActionKind,
+  CodeActionParams,
+  TextEdit,
 } from 'vscode-languageserver/node';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -68,12 +72,12 @@ const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
 // Fetch RWX packages from the API
 async function fetchRWXPackages(): Promise<RWXPackagesResponse | null> {
   const now = Date.now();
-  
+
   // Return cached data if it's still valid
   if (packageCache.data && (now - packageCache.timestamp) < CACHE_DURATION) {
     return packageCache.data;
   }
-  
+
   try {
     const response = await fetch('https://cloud.rwx.com/mint/api/leaves/documented', {
       headers: {
@@ -81,18 +85,18 @@ async function fetchRWXPackages(): Promise<RWXPackagesResponse | null> {
         'User-Agent': 'rwx-docs-leaves-index/1',
       },
     });
-    
+
     if (!response.ok) {
       console.error('Failed to fetch RWX packages:', response.status, response.statusText);
       return packageCache.data; // Return cached data if available
     }
-    
+
     const data = await response.json() as RWXPackagesResponse;
-    
+
     // Update cache
     packageCache.data = data;
     packageCache.timestamp = now;
-    
+
     return data;
   } catch (error) {
     console.error('Error fetching RWX packages:', error);
@@ -103,33 +107,33 @@ async function fetchRWXPackages(): Promise<RWXPackagesResponse | null> {
 // Fetch detailed package information for a specific version
 async function fetchPackageDetails(packageName: string, version: string): Promise<RWXPackageDetails | null> {
   const cacheKey = `${packageName}@${version}`;
-  
+
   // Return cached data if available
   if (packageDetailsCache.has(cacheKey)) {
     return packageDetailsCache.get(cacheKey)!;
   }
-  
+
   try {
     const url = `https://cloud.rwx.com/mint/api/leaves/${packageName}/${encodeURIComponent(version)}/documentation`;
     console.log('Fetching package details from:', url); // Debug logging
-    
+
     const response = await fetch(url, {
       headers: {
         Accept: 'application/json,*/*',
         'User-Agent': 'rwx-docs-leaves-index/1',
       },
     });
-    
+
     if (!response.ok) {
       console.error('Failed to fetch package details:', response.status, response.statusText, 'URL:', url);
       return null;
     }
-    
+
     const data = await response.json() as RWXPackageDetails;
-    
+
     // Cache the result indefinitely
     packageDetailsCache.set(cacheKey, data);
-    
+
     return data;
   } catch (error) {
     console.error('Error fetching package details:', error);
@@ -166,6 +170,9 @@ connection.onInitialize((params: InitializeParams) => {
       },
       definitionProvider: true,
       hoverProvider: true,
+      codeActionProvider: {
+        codeActionKinds: [CodeActionKind.QuickFix]
+      },
     },
   };
   if (hasWorkspaceFolderCapability) {
@@ -312,6 +319,10 @@ async function validateTextDocumentForDiagnostics(textDocument: TextDocument): P
       diagnostics.push(diagnostic);
     }
 
+    // Add version checking diagnostics
+    const versionDiagnostics = await checkPackageVersions(textDocument);
+    diagnostics.push(...versionDiagnostics);
+
     // Limit the number of problems reported
     return diagnostics.slice(0, settings.maxNumberOfProblems);
   } catch (error) {
@@ -335,7 +346,7 @@ function extractTaskKeys(result: any): string[] {
   if (!result?.partialRunDefinition?.tasks) {
     return [];
   }
-  
+
   return result.partialRunDefinition.tasks
     .map((task: any) => task.key)
     .filter((key: string) => key && typeof key === 'string');
@@ -344,11 +355,11 @@ function extractTaskKeys(result: any): string[] {
 // Helper function to find task definition location in document
 function findTaskDefinition(document: TextDocument, taskKey: string): Position | null {
   const lines = document.getText().split('\n');
-  
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!line) continue;
-    
+
     // Look for "- key: taskKey" or "  key: taskKey" patterns
     const keyPattern = new RegExp(`^\\s*(?:-\\s+)?key:\\s*['"]?${escapeRegExp(taskKey)}['"]?\\s*$`);
     if (keyPattern.test(line)) {
@@ -358,7 +369,7 @@ function findTaskDefinition(document: TextDocument, taskKey: string): Position |
       }
     }
   }
-  
+
   return null;
 }
 
@@ -384,13 +395,13 @@ function isInCallContext(document: TextDocument, position: { line: number; chara
   const currentLineIndex = position.line;
   const currentLine = lines[currentLineIndex] || '';
   const beforeCursor = currentLine.substring(0, position.character);
-  
+
   // Check if we're in a call declaration: "call: value"
   const callPattern = /\s*call:\s*/;
   if (callPattern.test(beforeCursor)) {
     return true;
   }
-  
+
   return false;
 }
 
@@ -400,24 +411,24 @@ function isInWithContext(document: TextDocument, position: { line: number; chara
   const currentLineIndex = position.line;
   const currentLine = lines[currentLineIndex] || '';
   const beforeCursor = currentLine.substring(0, position.character);
-  
+
   // Check if we're directly on a 'with:' line after the colon (for empty with blocks)
   if (/^\s*with:\s*$/.test(beforeCursor)) {
     return true;
   }
-  
-  // Check if we're on an indented line under 'with:' 
+
+  // Check if we're on an indented line under 'with:'
   // This handles empty lines, lines where we're typing parameter names, or right after 'with:'
   const currentIndent = currentLine.match(/^\s*/)?.[0].length || 0;
-  
+
   // If we're on an indented line, look backwards to find the 'with:' declaration
   if (currentIndent > 0 || /^\s*$/.test(beforeCursor)) {
     for (let i = currentLineIndex - 1; i >= 0; i--) {
       const prevLine = lines[i];
       if (!prevLine || prevLine.trim() === '') continue;
-      
+
       const prevIndent = prevLine.match(/^\s*/)?.[0].length || 0;
-      
+
       // If we hit a line with equal or less indentation, check if it's 'with:'
       if (prevIndent <= currentIndent) {
         if (/^\s*with:\s*$/.test(prevLine)) {
@@ -430,41 +441,115 @@ function isInWithContext(document: TextDocument, position: { line: number; chara
       }
     }
   }
-  
+
   return false;
 }
 
 // Helper function to find the call package for a with block
 function findCallPackageForWithBlock(document: TextDocument, withLineIndex: number): { packageName: string; version: string } | null {
   const lines = document.getText().split('\n');
-  
+
   // Look backwards from the with: line to find the call: line in the same task
   for (let i = withLineIndex - 1; i >= 0; i--) {
     const line = lines[i];
     if (!line || line.trim() === '') continue;
-    
+
     // Check if this is a call: line
     const packageInfo = extractPackageAndVersionFromCallLine(line);
     if (packageInfo) {
       return packageInfo;
     }
-    
+
     // If we hit a line that starts a new task (- key:), stop looking
     if (/^\s*-\s+key:/.test(line)) {
       break;
     }
   }
-  
+
   return null;
 }
 
-// Helper function to check if position is in a 'use' context  
+// Helper function to extract all call lines from a document
+function extractAllCallLines(document: TextDocument): Array<{ packageName: string; version: string; line: number; versionStart: number; versionEnd: number }> {
+  const lines = document.getText().split('\n');
+  const callLines: Array<{ packageName: string; version: string; line: number; versionStart: number; versionEnd: number }> = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+
+    const packageInfo = extractPackageAndVersionFromCallLine(line);
+    if (packageInfo) {
+      // Find the position of the version string in the line
+      const versionIndex = line.lastIndexOf(packageInfo.version);
+      if (versionIndex !== -1) {
+        callLines.push({
+          packageName: packageInfo.packageName,
+          version: packageInfo.version,
+          line: i,
+          versionStart: versionIndex,
+          versionEnd: versionIndex + packageInfo.version.length
+        });
+      }
+    }
+  }
+
+  return callLines;
+}
+
+// Helper function to check if a package version is outdated
+async function checkPackageVersions(document: TextDocument): Promise<Diagnostic[]> {
+  const diagnostics: Diagnostic[] = [];
+
+  try {
+    // Get latest package versions from the API
+    const latestPackages = await fetchRWXPackages();
+    if (!latestPackages) {
+      return diagnostics;
+    }
+
+    // Extract all call lines from the document
+    const callLines = extractAllCallLines(document);
+
+    for (const callLine of callLines) {
+      const latestPackage = latestPackages[callLine.packageName];
+      if (latestPackage && latestPackage.version !== callLine.version) {
+        // Create a diagnostic for the outdated version
+        const diagnostic: Diagnostic = {
+          severity: DiagnosticSeverity.Warning,
+          range: {
+            start: Position.create(callLine.line, callLine.versionStart),
+            end: Position.create(callLine.line, callLine.versionEnd)
+          },
+          message: `Package version ${callLine.version} is outdated. The newest version is ${latestPackage.version}.`,
+          source: 'mint',
+          code: 'outdated-version',
+          data: {
+            packageName: callLine.packageName,
+            currentVersion: callLine.version,
+            latestVersion: latestPackage.version,
+            line: callLine.line,
+            versionStart: callLine.versionStart,
+            versionEnd: callLine.versionEnd
+          }
+        };
+        diagnostics.push(diagnostic);
+      }
+    }
+  } catch (error) {
+    connection.console.error(`Error checking package versions: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  return diagnostics;
+}
+
+// Helper function to check if position is in a 'use' context
 function isInUseContext(document: TextDocument, position: { line: number; character: number }): boolean {
   const lines = document.getText().split('\n');
   const currentLineIndex = position.line;
   const currentLine = lines[currentLineIndex] || '';
   const beforeCursor = currentLine.substring(0, position.character);
-  
+
   // Check if we're in a simple use declaration: "use: value"
   const simpleUsePattern = /\s*use:\s*/;
   if (simpleUsePattern.test(beforeCursor)) {
@@ -473,13 +558,13 @@ function isInUseContext(document: TextDocument, position: { line: number; charac
       return true;
     }
   }
-  
+
   // Check if we're in a use array context anywhere on the line
   // Look for "use:" followed by "[" somewhere before cursor, but no closing "]"
   if (beforeCursor.includes('use:') && beforeCursor.includes('[') && !beforeCursor.includes(']')) {
     return true;
   }
-  
+
   // Additional check: if the line contains "use: [" but cursor is after comma or space
   const useArrayPattern = /use:\s*\[/;
   if (currentLine.includes('use:') && currentLine.includes('[') && !currentLine.includes(']')) {
@@ -492,7 +577,7 @@ function isInUseContext(document: TextDocument, position: { line: number; charac
       }
     }
   }
-  
+
   return false;
 }
 
@@ -516,9 +601,9 @@ connection.onCompletion(async (textDocumentPosition: TextDocumentPositionParams)
       const snippets = new Map();
       const fileName = document.uri.replace('file://', '');
       const result = await YamlParser.safelyParseRun(fileName, text, snippets);
-      
+
       const taskKeys = extractTaskKeys(result);
-      
+
       // Return completion items for task keys
       return taskKeys.map((key, index) => ({
         label: key,
@@ -617,26 +702,26 @@ connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
 function getWordRangeAtPosition(document: TextDocument, position: Position): { word: string; range: Range } | null {
   const line = document.getText().split('\n')[position.line];
   if (!line) return null;
-  
+
   const beforeCursor = line.substring(0, position.character);
   const afterCursor = line.substring(position.character);
-  
+
   // Find task name boundaries - valid task names can contain letters, digits, hyphens, underscores
   // Pattern matches: word-word, word--word, word_word, etc.
   const wordStart = beforeCursor.search(/[a-zA-Z0-9_-]+$/);
   const wordEndMatch = afterCursor.match(/^[a-zA-Z0-9_-]*/);
-  
+
   if (wordStart === -1 || !wordEndMatch) return null;
-  
+
   const wordEnd = wordEndMatch[0].length;
   const fullWord = line.substring(wordStart, position.character + wordEnd);
-  
+
   // Ensure we have a valid task name (not just hyphens or underscores)
   if (!/[a-zA-Z0-9]/.test(fullWord)) return null;
-  
+
   const startPos = Position.create(position.line, wordStart);
   const endPos = Position.create(position.line, position.character + wordEnd);
-  
+
   return {
     word: fullWord,
     range: Range.create(startPos, endPos)
@@ -649,31 +734,31 @@ connection.onDefinition(async (params: TextDocumentPositionParams): Promise<Loca
   if (!document || !isMintWorkflowFile(document)) {
     return null;
   }
-  
+
   // Check if we're in a use context
   if (!isInUseContext(document, params.position)) {
     return null;
   }
-  
+
   // Get the word and its range at the cursor position
   const wordInfo = getWordRangeAtPosition(document, params.position);
   if (!wordInfo) {
     return null;
   }
-  
+
   // Find the task definition
   const definitionPosition = findTaskDefinition(document, wordInfo.word);
   if (!definitionPosition) {
     return null;
   }
-  
+
   // Create a range that covers the entire task key at the definition
   const definitionEnd = Position.create(
     definitionPosition.line,
     definitionPosition.character + wordInfo.word.length
   );
   const definitionRange = Range.create(definitionPosition, definitionEnd);
-  
+
   // Return a LocationLink with both source and target ranges
   const locationLink: LocationLink = {
     originSelectionRange: wordInfo.range, // Highlights the source word
@@ -681,7 +766,7 @@ connection.onDefinition(async (params: TextDocumentPositionParams): Promise<Loca
     targetRange: definitionRange,
     targetSelectionRange: definitionRange
   };
-  
+
   return [locationLink];
 });
 
@@ -691,14 +776,14 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
   if (!document || !isMintWorkflowFile(document)) {
     return null;
   }
-  
+
   const lines = document.getText().split('\n');
   const currentLine = lines[params.position.line];
-  
+
   if (!currentLine) {
     return null;
   }
-  
+
   // Check if this line contains a call declaration with package and version
   const packageInfo = extractPackageAndVersionFromCallLine(currentLine);
   if (packageInfo) {
@@ -708,7 +793,7 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
       if (!packageDetails) {
         return null;
       }
-      
+
       // Build hover content with detailed information
       const hoverParts = [
         `**${packageDetails.name}** v${packageDetails.version}`,
@@ -730,26 +815,26 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
       // Add parameters if available
       if (packageDetails.parameters && packageDetails.parameters.length > 0) {
         hoverParts.push('', '**Parameters:**');
-        
+
         // Sort parameters: required first, then by name
         const sortedParams = [...packageDetails.parameters].sort((a, b) => {
           // Required parameters come first
           if (a.required && !b.required) return -1;
           if (!a.required && b.required) return 1;
-          
+
           // Within same required status, sort alphabetically by name
           return a.name.localeCompare(b.name);
         });
-        
+
         sortedParams.forEach(param => {
           let paramInfo = `- \`${param.name}\``;
-          
+
           if (param.required) {
             paramInfo += ' **(required)**';
           } else if (param.default) {
             paramInfo += ` *(default: "${param.default}")*`;
           }
-          
+
           paramInfo += `: ${param.description}`;
           hoverParts.push(paramInfo);
         });
@@ -759,7 +844,7 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
         kind: MarkupKind.Markdown,
         value: hoverParts.join('\n')
       };
-      
+
       return {
         contents: hoverContent
       };
@@ -773,7 +858,7 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
   const paramMatch = currentLine.match(/^\s*([a-zA-Z0-9_-]+):/);
   if (paramMatch) {
     const paramName = paramMatch[1];
-    
+
     try {
       // Find the associated call package
       const packageInfo = findCallPackageForWithBlock(document, params.position.line);
@@ -810,7 +895,7 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
         kind: MarkupKind.Markdown,
         value: hoverParts.join('\n')
       };
-      
+
       return {
         contents: hoverContent
       };
@@ -821,6 +906,53 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
   }
 
   return null;
+});
+
+// Code action provider
+connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
+  const codeActions: CodeAction[] = [];
+  
+  // Check for outdated version diagnostics
+  const outdatedDiagnostics = params.context.diagnostics.filter(
+    diagnostic => diagnostic.code === 'outdated-version' && diagnostic.source === 'mint'
+  );
+  
+  for (const diagnostic of outdatedDiagnostics) {
+    if (diagnostic.data) {
+      const data = diagnostic.data as {
+        packageName: string;
+        currentVersion: string;
+        latestVersion: string;
+        line: number;
+        versionStart: number;
+        versionEnd: number;
+      };
+      
+      // Create a code action to update to the latest version
+      const codeAction: CodeAction = {
+        title: `Update to latest version (${data.latestVersion})`,
+        kind: CodeActionKind.QuickFix,
+        diagnostics: [diagnostic],
+        edit: {
+          changes: {
+            [params.textDocument.uri]: [
+              TextEdit.replace(
+                Range.create(
+                  Position.create(data.line, data.versionStart),
+                  Position.create(data.line, data.versionEnd)
+                ),
+                data.latestVersion
+              )
+            ]
+          }
+        }
+      };
+      
+      codeActions.push(codeAction);
+    }
+  }
+  
+  return codeActions;
 });
 
 // Register debug command handler
