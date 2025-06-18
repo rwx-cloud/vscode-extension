@@ -74,7 +74,9 @@
     "compile": "tsc -b",
     "watch": "tsc -b -w",
     "postinstall": "cd client && npm install && cd ../server && npm install",
-    "test": "sh ./scripts/e2e.sh"
+    "test": "sh ./scripts/e2e.sh",
+    "package": "vsce package",
+    "install-local": "npm run compile && npm run package && code --install-extension mint-language-support-0.1.0.vsix --force"
   },
   "dependencies": {
     "vscode-languageclient": "^8.1.0",
