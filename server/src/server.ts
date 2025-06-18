@@ -394,6 +394,68 @@ function isInCallContext(document: TextDocument, position: { line: number; chara
   return false;
 }
 
+// Helper function to check if position is in a 'with:' parameter context
+function isInWithContext(document: TextDocument, position: { line: number; character: number }): boolean {
+  const lines = document.getText().split('\n');
+  const currentLineIndex = position.line;
+  const currentLine = lines[currentLineIndex] || '';
+  const beforeCursor = currentLine.substring(0, position.character);
+  
+  // Check if we're directly on a 'with:' line after the colon (for empty with blocks)
+  const withPattern = /^\s*with:\s*$/;
+  if (withPattern.test(beforeCursor)) {
+    return true;
+  }
+  
+  // Check if we're on an indented line under 'with:' at the beginning of the line
+  // This handles both empty lines and lines where we're typing a new parameter name
+  if (/^\s*$/.test(beforeCursor) || /^\s+[a-zA-Z0-9_-]*$/.test(beforeCursor)) {
+    // Look backwards to find the 'with:' declaration
+    for (let i = currentLineIndex - 1; i >= 0; i--) {
+      const prevLine = lines[i];
+      if (!prevLine || prevLine.trim() === '') continue;
+      
+      // If we hit a line with equal or less indentation that's not 'with:', we're not in a with block
+      const currentIndent = currentLine.match(/^\s*/)?.[0].length || 0;
+      const prevIndent = prevLine.match(/^\s*/)?.[0].length || 0;
+      
+      if (prevIndent < currentIndent) {
+        // Check if this is a 'with:' line
+        if (/^\s*with:\s*$/.test(prevLine)) {
+          return true;
+        }
+        break;
+      }
+    }
+  }
+  
+  return false;
+}
+
+// Helper function to find the call package for a with block
+function findCallPackageForWithBlock(document: TextDocument, withLineIndex: number): { packageName: string; version: string } | null {
+  const lines = document.getText().split('\n');
+  
+  // Look backwards from the with: line to find the call: line in the same task
+  for (let i = withLineIndex - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line || line.trim() === '') continue;
+    
+    // Check if this is a call: line
+    const packageInfo = extractPackageAndVersionFromCallLine(line);
+    if (packageInfo) {
+      return packageInfo;
+    }
+    
+    // If we hit a line that starts a new task (- key:), stop looking
+    if (/^\s*-\s+key:/.test(line)) {
+      break;
+    }
+  }
+  
+  return null;
+}
+
 // Helper function to check if position is in a 'use' context  
 function isInUseContext(document: TextDocument, position: { line: number; character: number }): boolean {
   const lines = document.getText().split('\n');
@@ -489,6 +551,45 @@ connection.onCompletion(async (textDocumentPosition: TextDocumentPositionParams)
       }));
     } catch (error) {
       connection.console.error(`Error getting package completions: ${error instanceof Error ? error.message : String(error)}`);
+      return [];
+    }
+  }
+
+  // Check if we're in a 'with' context for parameter completions
+  if (isInWithContext(document, textDocumentPosition.position)) {
+    try {
+      // Find the associated call package
+      const packageInfo = findCallPackageForWithBlock(document, textDocumentPosition.position.line);
+      if (!packageInfo) {
+        return [];
+      }
+
+      // Fetch detailed package information to get parameters
+      const packageDetails = await fetchPackageDetails(packageInfo.packageName, packageInfo.version);
+      if (!packageDetails || !packageDetails.parameters) {
+        return [];
+      }
+
+      // Convert parameters to completion items
+      return packageDetails.parameters.map((param, index) => {
+        let detail = '';
+        if (param.required) {
+          detail = 'required';
+        } else if (param.default) {
+          detail = `default: "${param.default}"`;
+        }
+
+        return {
+          label: param.name,
+          kind: CompletionItemKind.Property,
+          detail: detail,
+          documentation: param.description,
+          data: `param-${index}`,
+          insertText: `${param.name}: `,
+        };
+      });
+    } catch (error) {
+      connection.console.error(`Error getting parameter completions: ${error instanceof Error ? error.message : String(error)}`);
       return [];
     }
   }
@@ -598,75 +699,126 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
   
   // Check if this line contains a call declaration with package and version
   const packageInfo = extractPackageAndVersionFromCallLine(currentLine);
-  if (!packageInfo) {
-    return null;
-  }
-  
-  try {
-    // Fetch detailed package information for the specific version
-    const packageDetails = await fetchPackageDetails(packageInfo.packageName, packageInfo.version);
-    if (!packageDetails) {
+  if (packageInfo) {
+    try {
+      // Fetch detailed package information for the specific version
+      const packageDetails = await fetchPackageDetails(packageInfo.packageName, packageInfo.version);
+      if (!packageDetails) {
+        return null;
+      }
+      
+      // Build hover content with detailed information
+      const hoverParts = [
+        `**${packageDetails.name}** v${packageDetails.version}`,
+        '',
+        packageDetails.description,
+        ''
+      ];
+
+      // Add source code URL if available
+      if (packageDetails.source_code_url) {
+        hoverParts.push(`**Source Code:** ${packageDetails.source_code_url}`);
+      }
+
+      // Add issue tracker URL if available
+      if (packageDetails.issue_tracker_url) {
+        hoverParts.push('', `**Issues:** ${packageDetails.issue_tracker_url}`);
+      }
+
+      // Add parameters if available
+      if (packageDetails.parameters && packageDetails.parameters.length > 0) {
+        hoverParts.push('', '**Parameters:**');
+        
+        // Sort parameters: required first, then by name
+        const sortedParams = [...packageDetails.parameters].sort((a, b) => {
+          // Required parameters come first
+          if (a.required && !b.required) return -1;
+          if (!a.required && b.required) return 1;
+          
+          // Within same required status, sort alphabetically by name
+          return a.name.localeCompare(b.name);
+        });
+        
+        sortedParams.forEach(param => {
+          let paramInfo = `- \`${param.name}\``;
+          
+          if (param.required) {
+            paramInfo += ' **(required)**';
+          } else if (param.default) {
+            paramInfo += ` *(default: "${param.default}")*`;
+          }
+          
+          paramInfo += `: ${param.description}`;
+          hoverParts.push(paramInfo);
+        });
+      }
+
+      const hoverContent = {
+        kind: MarkupKind.Markdown,
+        value: hoverParts.join('\n')
+      };
+      
+      return {
+        contents: hoverContent
+      };
+    } catch (error) {
+      connection.console.error(`Error getting hover info: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
-    
-    // Build hover content with detailed information
-    const hoverParts = [
-      `**${packageDetails.name}** v${packageDetails.version}`,
-      '',
-      packageDetails.description,
-      ''
-    ];
-
-    // Add source code URL if available
-    if (packageDetails.source_code_url) {
-      hoverParts.push(`**Source Code:** ${packageDetails.source_code_url}`);
-    }
-
-    // Add issue tracker URL if available
-    if (packageDetails.issue_tracker_url) {
-      hoverParts.push('', `**Issues:** ${packageDetails.issue_tracker_url}`);
-    }
-
-    // Add parameters if available
-    if (packageDetails.parameters && packageDetails.parameters.length > 0) {
-      hoverParts.push('', '**Parameters:**');
-      
-      // Sort parameters: required first, then by name
-      const sortedParams = [...packageDetails.parameters].sort((a, b) => {
-        // Required parameters come first
-        if (a.required && !b.required) return -1;
-        if (!a.required && b.required) return 1;
-        
-        // Within same required status, sort alphabetically by name
-        return a.name.localeCompare(b.name);
-      });
-      
-      sortedParams.forEach(param => {
-        let paramInfo = `- \`${param.name}\``;
-        
-        if (param.required) {
-          paramInfo += ' **(required)**';
-        } else if (param.default) {
-          paramInfo += ` *(default: "${param.default}")*`;
-        }
-        
-        paramInfo += `: ${param.description}`;
-        hoverParts.push(paramInfo);
-      });
-    }
-
-    const hoverContent = {
-      kind: MarkupKind.Markdown,
-      value: hoverParts.join('\n')
-    };
-    
-    return {
-      contents: hoverContent
-    };
-  } catch (error) {
-    connection.console.error(`Error getting hover info: ${error instanceof Error ? error.message : String(error)}`);
-    return null;
   }
+
+  // Check if we're hovering over a parameter name in a with block
+  const paramMatch = currentLine.match(/^\s*([a-zA-Z0-9_-]+):/);
+  if (paramMatch) {
+    const paramName = paramMatch[1];
+    
+    try {
+      // Find the associated call package
+      const packageInfo = findCallPackageForWithBlock(document, params.position.line);
+      if (!packageInfo) {
+        return null;
+      }
+
+      // Fetch detailed package information to get parameter details
+      const packageDetails = await fetchPackageDetails(packageInfo.packageName, packageInfo.version);
+      if (!packageDetails || !packageDetails.parameters) {
+        return null;
+      }
+
+      // Find the specific parameter
+      const parameter = packageDetails.parameters.find(p => p.name === paramName);
+      if (!parameter) {
+        return null;
+      }
+
+      // Build hover content for the parameter
+      const hoverParts = [
+        `**${parameter.name}**`
+      ];
+
+      if (parameter.required) {
+        hoverParts.push('*Required parameter*');
+      } else if (parameter.default) {
+        hoverParts.push(`*Default: "${parameter.default}"*`);
+      }
+
+      hoverParts.push('', parameter.description);
+
+      const hoverContent = {
+        kind: MarkupKind.Markdown,
+        value: hoverParts.join('\n')
+      };
+      
+      return {
+        contents: hoverContent
+      };
+    } catch (error) {
+      connection.console.error(`Error getting parameter hover info: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
+
+  return null;
 });
 
 // Register debug command handler
