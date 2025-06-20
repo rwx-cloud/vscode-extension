@@ -11,7 +11,7 @@ console.log('1. Testing client extension loading...');
 try {
   // Clear require cache first
   delete require.cache[require.resolve('../client/out/extension.js')];
-  
+
   const extension = require('../client/out/extension.js');
   console.log('   ✅ Client extension loaded');
   console.log('   ✅ Has activate function:', typeof extension.activate);
@@ -38,17 +38,17 @@ try {
 console.log('\n3. Testing server structure (without parser)...');
 try {
   const serverCode = require('fs').readFileSync('./server/out/server.js', 'utf8');
-  
+
   // Check for key components
   const checks = [
     ['createConnection', serverCode.includes('createConnection')],
     ['onInitialize', serverCode.includes('onInitialize')],
     ['TextDocuments', serverCode.includes('TextDocuments')],
     ['diagnostics', serverCode.includes('diagnostics')],
-    ['mint/dumpDebugData', serverCode.includes('mint/dumpDebugData')],
-    ['isMintWorkflowFile', serverCode.includes('isMintWorkflowFile')]
+    ['rwx/dumpDebugData', serverCode.includes('rwx/dumpDebugData')],
+    ['isRwxRunFile', serverCode.includes('isRwxRunFile')],
   ];
-  
+
   checks.forEach(([check, result]) => {
     console.log(`   ${result ? '✅' : '❌'} ${check}`);
   });
@@ -60,31 +60,31 @@ try {
 console.log('\n4. Testing extension configuration...');
 try {
   const pkg = JSON.parse(require('fs').readFileSync('./package.json', 'utf8'));
-  
+
   console.log('   ✅ Extension ID:', pkg.name);
   console.log('   ✅ Publisher:', pkg.publisher);
   console.log('   ✅ Main entry exists:', require('fs').existsSync('./' + pkg.main + '.js'));
-  
+
   // Check activation events
   if (pkg.activationEvents) {
     console.log('   ✅ Activation events:');
-    pkg.activationEvents.forEach(event => {
+    pkg.activationEvents.forEach((event) => {
       console.log(`     - ${event}`);
     });
   }
-  
+
   // Check commands
   if (pkg.contributes?.commands) {
     console.log('   ✅ Commands:');
-    pkg.contributes.commands.forEach(cmd => {
+    pkg.contributes.commands.forEach((cmd) => {
       console.log(`     - ${cmd.command}`);
     });
   }
-  
+
   // Check file patterns
   if (pkg.contributes?.languages) {
     console.log('   ✅ Languages:');
-    pkg.contributes.languages.forEach(lang => {
+    pkg.contributes.languages.forEach((lang) => {
       console.log(`     - ${lang.id}: ${lang.extensions?.join(', ')}`);
       if (lang.filenamePatterns) {
         console.log(`       Patterns: ${lang.filenamePatterns.join(', ')}`);

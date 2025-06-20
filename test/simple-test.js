@@ -18,7 +18,7 @@ const files = [
   'client/out/extension.js',
   'server/out/server.js',
   'server/support/parser.js',
-  'server/support/parser.d.ts'
+  'server/support/parser.d.ts',
 ];
 
 for (const file of files) {
@@ -41,7 +41,7 @@ try {
 console.log('\n3. Testing basic parsing...');
 try {
   const { YamlParser } = require('../server/support/parser.js');
-  
+
   const testYaml = `
 tasks:
   - key: test-task
@@ -49,16 +49,16 @@ tasks:
 `;
 
   YamlParser.safelyParseRun('test.yml', testYaml, new Map())
-    .then(result => {
+    .then((result) => {
       console.log('   ✅ Parse successful');
       console.log('   ✅ Errors:', result.errors.length);
       console.log('   ✅ Has definition:', !!result.partialRunDefinition);
-      
+
       if (result.errors.length > 0) {
         console.log('   📝 Sample error:', result.errors[0].message);
       }
     })
-    .catch(error => {
+    .catch((error) => {
       console.log('   ❌ Parse failed:', error.message);
     });
 } catch (error) {
@@ -73,9 +73,9 @@ try {
   console.log('   ✅ Main entry:', pkg.main);
   console.log('   ✅ Activation events:', pkg.activationEvents);
   console.log('   ✅ Commands:', pkg.contributes?.commands?.length || 0);
-  
+
   if (pkg.contributes?.commands) {
-    pkg.contributes.commands.forEach(cmd => {
+    pkg.contributes.commands.forEach((cmd) => {
       console.log(`     - ${cmd.command}: ${cmd.title}`);
     });
   }
@@ -102,7 +102,7 @@ try {
   console.log('   ✅ Server compiled size:', serverCode.length, 'bytes');
   console.log('   ✅ Has connection:', serverCode.includes('createConnection'));
   console.log('   ✅ Has onInitialize:', serverCode.includes('onInitialize'));
-  console.log('   ✅ Has debug handler:', serverCode.includes('mint/dumpDebugData'));
+  console.log('   ✅ Has debug handler:', serverCode.includes('rwx/dumpDebugData'));
 } catch (error) {
   console.log('   ❌ Server check error:', error.message);
 }

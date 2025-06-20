@@ -1,16 +1,16 @@
 {
   "iconDefinitions": {
-    "mint-yaml": {
+    "rwx-run-yaml": {
       "iconPath": "./rwx-icon.png"
     }
   },
   "fileExtensions": {},
   "fileNames": {},
   "languageIds": {
-    "mint-yaml": "mint-yaml"
+    "rwx-run-yaml": "rwx-run"
   },
   "folderNames": {
-    ".mint": "mint-yaml",
-    ".rwx": "mint-yaml"
+    ".mint": "rwx-run",
+    ".rwx": "rwx-run"
   }
 }

@@ -62,7 +62,7 @@ interface RWXPackageDetails {
 // Package cache - cache for 1 hour
 const packageCache: { data: RWXPackagesResponse | null; timestamp: number } = {
   data: null,
-  timestamp: 0
+  timestamp: 0,
 };
 
 // Package details cache - cache indefinitely
@@ -75,7 +75,7 @@ async function fetchRWXPackages(): Promise<RWXPackagesResponse | null> {
   const now = Date.now();
 
   // Return cached data if it's still valid
-  if (packageCache.data && (now - packageCache.timestamp) < CACHE_DURATION) {
+  if (packageCache.data && now - packageCache.timestamp < CACHE_DURATION) {
     return packageCache.data;
   }
 
@@ -92,7 +92,7 @@ async function fetchRWXPackages(): Promise<RWXPackagesResponse | null> {
       return packageCache.data; // Return cached data if available
     }
 
-    const data = await response.json() as RWXPackagesResponse;
+    const data = (await response.json()) as RWXPackagesResponse;
 
     // Update cache
     packageCache.data = data;
@@ -130,7 +130,7 @@ async function fetchPackageDetails(packageName: string, version: string): Promis
       return null;
     }
 
-    const data = await response.json() as RWXPackageDetails;
+    const data = (await response.json()) as RWXPackageDetails;
 
     // Cache the result indefinitely
     packageDetailsCache.set(cacheKey, data);
@@ -172,7 +172,7 @@ connection.onInitialize((params: InitializeParams) => {
       definitionProvider: true,
       hoverProvider: true,
       codeActionProvider: {
-        codeActionKinds: [CodeActionKind.QuickFix]
+        codeActionKinds: [CodeActionKind.QuickFix],
       },
     },
   };
@@ -198,29 +198,31 @@ connection.onInitialized(() => {
   }
 });
 
-interface MintSettings {
+interface RwxLanguageServerSettings {
   maxNumberOfProblems: number;
 }
 
 // The global settings, used when the `workspace/configuration` request is not supported by the client.
-const defaultSettings: MintSettings = { maxNumberOfProblems: 1000 };
-let globalSettings: MintSettings = defaultSettings;
+const defaultSettings: RwxLanguageServerSettings = { maxNumberOfProblems: 1000 };
+let globalSettings: RwxLanguageServerSettings = defaultSettings;
 
 // Cache the settings of all open documents
-const documentSettings: Map<string, Thenable<MintSettings>> = new Map();
+const documentSettings: Map<string, Thenable<RwxLanguageServerSettings>> = new Map();
 
 connection.onDidChangeConfiguration((change) => {
   if (hasConfigurationCapability) {
     // Reset all cached document settings
     documentSettings.clear();
   } else {
-    globalSettings = <MintSettings>((change.settings as { mintLanguageServer?: MintSettings }).mintLanguageServer || defaultSettings);
+    globalSettings = <RwxLanguageServerSettings>(
+      ((change.settings as { rwxLanguageServer?: RwxLanguageServerSettings }).rwxLanguageServer || defaultSettings)
+    );
   }
 
   // Configuration changes will automatically trigger diagnostic refresh
 });
 
-function getDocumentSettings(resource: string): Thenable<MintSettings> {
+function getDocumentSettings(resource: string): Thenable<RwxLanguageServerSettings> {
   if (!hasConfigurationCapability) {
     return Promise.resolve(globalSettings);
   }
@@ -229,7 +231,7 @@ function getDocumentSettings(resource: string): Thenable<MintSettings> {
     result = connection.workspace
       .getConfiguration({
         scopeUri: resource,
-        section: 'mintLanguageServer',
+        section: 'rwxLanguageServer',
       })
       .then((config: unknown) => {
         // Ensure we have valid settings with defaults
@@ -249,7 +251,7 @@ documents.onDidClose((e) => {
 });
 
 // Check if document is in a .mint or .rwx directory
-function isMintWorkflowFile(document: TextDocument): boolean {
+function isRwxRunFile(document: TextDocument): boolean {
   const filePath = document.uri.replace('file://', '');
   const normalizedPath = path.normalize(filePath);
 
@@ -275,11 +277,11 @@ connection.languages.diagnostics.on(async (params) => {
 
 async function validateTextDocumentForDiagnostics(textDocument: TextDocument): Promise<Diagnostic[]> {
   // Only validate YAML files in .mint or .rwx directories
-  if (!isMintWorkflowFile(textDocument)) {
+  if (!isRwxRunFile(textDocument)) {
     return [];
   }
 
-  let settings: MintSettings;
+  let settings: RwxLanguageServerSettings;
   try {
     settings = await getDocumentSettings(textDocument.uri);
   } catch (error) {
@@ -310,7 +312,7 @@ async function validateTextDocumentForDiagnostics(textDocument: TextDocument): P
           },
         },
         message: error.message,
-        source: 'mint-parser',
+        source: 'rwx-run-parser',
       };
 
       if (error.advice) {
@@ -336,7 +338,7 @@ async function validateTextDocumentForDiagnostics(textDocument: TextDocument): P
           end: { line: 0, character: 10 },
         },
         message: `Parser error: ${error instanceof Error ? error.message : String(error)}`,
-        source: 'mint-parser',
+        source: 'rwx-run-parser',
       },
     ];
   }
@@ -348,9 +350,7 @@ function extractTaskKeys(result: any): string[] {
     return [];
   }
 
-  return result.partialRunDefinition.tasks
-    .map((task: any) => task.key)
-    .filter((key: string) => key && typeof key === 'string');
+  return result.partialRunDefinition.tasks.map((task: any) => task.key).filter((key: string) => key && typeof key === 'string');
 }
 
 // Helper function to find task definition location in document
@@ -382,15 +382,16 @@ function escapeRegExp(string: string): string {
 // Helper function to find the parent .mint or .rwx directory
 function findMintDirectory(filePath: string): string | null {
   let currentDir = path.dirname(filePath);
-  
-  while (currentDir !== path.dirname(currentDir)) { // Stop at filesystem root
+
+  while (currentDir !== path.dirname(currentDir)) {
+    // Stop at filesystem root
     const dirName = path.basename(currentDir);
     if (dirName === '.mint' || dirName === '.rwx') {
       return currentDir;
     }
     currentDir = path.dirname(currentDir);
   }
-  
+
   return null;
 }
 
@@ -398,22 +399,21 @@ function findMintDirectory(filePath: string): string | null {
 async function getFileCompletions(baseDir: string, relativePath: string = ''): Promise<CompletionItem[]> {
   try {
     const searchDir = path.join(baseDir, relativePath);
-    
+
     // Check if the directory exists
     if (!fs.existsSync(searchDir) || !fs.statSync(searchDir).isDirectory()) {
       return [];
     }
-    
+
     const entries = fs.readdirSync(searchDir, { withFileTypes: true });
     const completions: CompletionItem[] = [];
-    
+
     for (const entry of entries) {
       // Skip hidden files and directories (starting with .)
       if (entry.name.startsWith('.')) {
         continue;
       }
-      
-      
+
       if (entry.isDirectory()) {
         completions.push({
           label: entry.name,
@@ -423,19 +423,19 @@ async function getFileCompletions(baseDir: string, relativePath: string = ''): P
           data: `dir-${entry.name}`,
         });
       } else if (entry.isFile()) {
-        // Only include YAML files for Mint workflows
+        // Only include YAML files for RWX run definitions
         if (entry.name.endsWith('.yml') || entry.name.endsWith('.yaml')) {
           completions.push({
             label: entry.name,
             kind: CompletionItemKind.File,
-            detail: 'Mint workflow file',
+            detail: 'RWX run definition file',
             insertText: entry.name,
             data: `file-${entry.name}`,
           });
         }
       }
     }
-    
+
     return completions.sort((a, b) => {
       // Sort directories first, then files
       if (a.kind === CompletionItemKind.Folder && b.kind === CompletionItemKind.File) {
@@ -461,9 +461,6 @@ function extractPackageAndVersionFromCallLine(line: string): { packageName: stri
   return match && match[1] && match[2] ? { packageName: match[1], version: match[2] } : null;
 }
 
-
-
-
 // Helper function to check if position is in a 'call' context
 function isInCallContext(document: TextDocument, position: { line: number; character: number }): boolean {
   const lines = document.getText().split('\n');
@@ -481,7 +478,10 @@ function isInCallContext(document: TextDocument, position: { line: number; chara
 }
 
 // Helper function to check if position is in an embedded run call context
-function isInEmbeddedRunCallContext(document: TextDocument, position: { line: number; character: number }): { isInContext: boolean; relativePath: string } {
+function isInEmbeddedRunCallContext(
+  document: TextDocument,
+  position: { line: number; character: number },
+): { isInContext: boolean; relativePath: string } {
   const lines = document.getText().split('\n');
   const currentLineIndex = position.line;
   const currentLine = lines[currentLineIndex] || '';
@@ -490,7 +490,7 @@ function isInEmbeddedRunCallContext(document: TextDocument, position: { line: nu
   // Check if we're in a call context that contains ${{ run.mint-dir }}/
   const embeddedRunPattern = /\s*call:\s*\$\{\{\s*run\.mint-dir\s*\}\}\//;
   const match = beforeCursor.match(embeddedRunPattern);
-  
+
   if (match) {
     // Extract the path after ${{ run.mint-dir }}/
     const afterMintDir = beforeCursor.substring(match.index! + match[0].length);
@@ -505,11 +505,11 @@ function extractEmbeddedRunFilePath(line: string): string | null {
   // Match pattern: "call: ${{ run.mint-dir }}/path/to/file.yml"
   const embeddedRunPattern = /\s*call:\s*\$\{\{\s*run\.mint-dir\s*\}\}\/(.+)/;
   const match = line.match(embeddedRunPattern);
-  
+
   if (match && match[1]) {
     return match[1].trim();
   }
-  
+
   return null;
 }
 
@@ -517,39 +517,36 @@ function extractEmbeddedRunFilePath(line: string): string | null {
 function getEmbeddedRunFilePathAtPosition(document: TextDocument, position: Position): { filePath: string; range: Range } | null {
   const lines = document.getText().split('\n');
   const currentLine = lines[position.line];
-  
+
   if (!currentLine) {
     return null;
   }
-  
+
   // Check if this line contains an embedded run call
   const filePath = extractEmbeddedRunFilePath(currentLine);
   if (!filePath) {
     return null;
   }
-  
+
   // Find the start and end positions of the file path in the line
   const embeddedRunPattern = /(\s*call:\s*\$\{\{\s*run\.mint-dir\s*\}\}\/)(.+)/;
   const match = currentLine.match(embeddedRunPattern);
-  
+
   if (!match) {
     return null;
   }
-  
+
   const prefixLength = match[1]?.length || 0;
   const filePathStart = prefixLength;
   const filePathEnd = prefixLength + (match[2]?.length || 0);
-  
+
   // Check if the cursor position is within the file path
   if (position.character >= filePathStart && position.character <= filePathEnd) {
-    const range = Range.create(
-      Position.create(position.line, filePathStart),
-      Position.create(position.line, filePathEnd)
-    );
-    
+    const range = Range.create(Position.create(position.line, filePathStart), Position.create(position.line, filePathEnd));
+
     return { filePath, range };
   }
-  
+
   return null;
 }
 
@@ -618,7 +615,9 @@ function findCallPackageForWithBlock(document: TextDocument, withLineIndex: numb
 }
 
 // Helper function to extract all call lines from a document
-function extractAllCallLines(document: TextDocument): Array<{ packageName: string; version: string; line: number; versionStart: number; versionEnd: number }> {
+function extractAllCallLines(
+  document: TextDocument,
+): Array<{ packageName: string; version: string; line: number; versionStart: number; versionEnd: number }> {
   const lines = document.getText().split('\n');
   const callLines: Array<{ packageName: string; version: string; line: number; versionStart: number; versionEnd: number }> = [];
 
@@ -636,7 +635,7 @@ function extractAllCallLines(document: TextDocument): Array<{ packageName: strin
           version: packageInfo.version,
           line: i,
           versionStart: versionIndex,
-          versionEnd: versionIndex + packageInfo.version.length
+          versionEnd: versionIndex + packageInfo.version.length,
         });
       }
     }
@@ -667,7 +666,7 @@ async function checkPackageVersions(document: TextDocument): Promise<Diagnostic[
           severity: DiagnosticSeverity.Warning,
           range: {
             start: Position.create(callLine.line, callLine.versionStart),
-            end: Position.create(callLine.line, callLine.versionEnd)
+            end: Position.create(callLine.line, callLine.versionEnd),
           },
           message: `Package version ${callLine.version} is outdated. The newest version is ${latestPackage.version}.`,
           source: 'mint',
@@ -678,8 +677,8 @@ async function checkPackageVersions(document: TextDocument): Promise<Diagnostic[
             latestVersion: latestPackage.version,
             line: callLine.line,
             versionStart: callLine.versionStart,
-            versionEnd: callLine.versionEnd
-          }
+            versionEnd: callLine.versionEnd,
+          },
         };
         diagnostics.push(diagnostic);
       }
@@ -737,7 +736,7 @@ connection.onCompletion(async (textDocumentPosition: TextDocumentPositionParams)
   }
 
   // Only provide completions for Mint workflow files
-  if (!isMintWorkflowFile(document)) {
+  if (!isRwxRunFile(document)) {
     return [];
   }
 
@@ -774,7 +773,7 @@ connection.onCompletion(async (textDocumentPosition: TextDocumentPositionParams)
       // Find the .mint or .rwx directory
       const filePath = document.uri.replace('file://', '');
       const mintDir = findMintDirectory(filePath);
-      
+
       if (!mintDir) {
         return [];
       }
@@ -892,14 +891,14 @@ function getWordRangeAtPosition(document: TextDocument, position: Position): { w
 
   return {
     word: fullWord,
-    range: Range.create(startPos, endPos)
+    range: Range.create(startPos, endPos),
   };
 }
 
 // Definition provider
 connection.onDefinition(async (params: TextDocumentPositionParams): Promise<LocationLink[] | null> => {
   const document = documents.get(params.textDocument.uri);
-  if (!document || !isMintWorkflowFile(document)) {
+  if (!document || !isRwxRunFile(document)) {
     return null;
   }
 
@@ -910,14 +909,14 @@ connection.onDefinition(async (params: TextDocumentPositionParams): Promise<Loca
       // Find the .mint or .rwx directory
       const currentFilePath = document.uri.replace('file://', '');
       const mintDir = findMintDirectory(currentFilePath);
-      
+
       if (!mintDir) {
         return null;
       }
 
       // Construct the target file path
       const targetFilePath = path.join(mintDir, embeddedRunInfo.filePath);
-      
+
       // Check if the file exists
       if (!fs.existsSync(targetFilePath)) {
         return null;
@@ -931,7 +930,7 @@ connection.onDefinition(async (params: TextDocumentPositionParams): Promise<Loca
         originSelectionRange: embeddedRunInfo.range,
         targetUri: targetUri,
         targetRange: Range.create(Position.create(0, 0), Position.create(0, 0)),
-        targetSelectionRange: Range.create(Position.create(0, 0), Position.create(0, 0))
+        targetSelectionRange: Range.create(Position.create(0, 0), Position.create(0, 0)),
       };
 
       return [locationLink];
@@ -959,10 +958,7 @@ connection.onDefinition(async (params: TextDocumentPositionParams): Promise<Loca
   }
 
   // Create a range that covers the entire task key at the definition
-  const definitionEnd = Position.create(
-    definitionPosition.line,
-    definitionPosition.character + wordInfo.word.length
-  );
+  const definitionEnd = Position.create(definitionPosition.line, definitionPosition.character + wordInfo.word.length);
   const definitionRange = Range.create(definitionPosition, definitionEnd);
 
   // Return a LocationLink with both source and target ranges
@@ -970,7 +966,7 @@ connection.onDefinition(async (params: TextDocumentPositionParams): Promise<Loca
     originSelectionRange: wordInfo.range, // Highlights the source word
     targetUri: document.uri,
     targetRange: definitionRange,
-    targetSelectionRange: definitionRange
+    targetSelectionRange: definitionRange,
   };
 
   return [locationLink];
@@ -979,7 +975,7 @@ connection.onDefinition(async (params: TextDocumentPositionParams): Promise<Loca
 // Hover provider
 connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | null> => {
   const document = documents.get(params.textDocument.uri);
-  if (!document || !isMintWorkflowFile(document)) {
+  if (!document || !isRwxRunFile(document)) {
     return null;
   }
 
@@ -1001,12 +997,7 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
       }
 
       // Build hover content with detailed information
-      const hoverParts = [
-        `**${packageDetails.name}** v${packageDetails.version}`,
-        '',
-        packageDetails.description,
-        ''
-      ];
+      const hoverParts = [`**${packageDetails.name}** v${packageDetails.version}`, '', packageDetails.description, ''];
 
       // Add source code URL if available
       if (packageDetails.source_code_url) {
@@ -1032,7 +1023,7 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
           return a.name.localeCompare(b.name);
         });
 
-        sortedParams.forEach(param => {
+        sortedParams.forEach((param) => {
           let paramInfo = `- \`${param.name}\``;
 
           if (param.required) {
@@ -1048,11 +1039,11 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
 
       const hoverContent = {
         kind: MarkupKind.Markdown,
-        value: hoverParts.join('\n')
+        value: hoverParts.join('\n'),
       };
 
       return {
-        contents: hoverContent
+        contents: hoverContent,
       };
     } catch (error) {
       connection.console.error(`Error getting hover info: ${error instanceof Error ? error.message : String(error)}`);
@@ -1079,15 +1070,13 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
       }
 
       // Find the specific parameter
-      const parameter = packageDetails.parameters.find(p => p.name === paramName);
+      const parameter = packageDetails.parameters.find((p) => p.name === paramName);
       if (!parameter) {
         return null;
       }
 
       // Build hover content for the parameter
-      const hoverParts = [
-        `**${parameter.name}**`
-      ];
+      const hoverParts = [`**${parameter.name}**`];
 
       if (parameter.required) {
         hoverParts.push('*Required parameter*');
@@ -1099,11 +1088,11 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
 
       const hoverContent = {
         kind: MarkupKind.Markdown,
-        value: hoverParts.join('\n')
+        value: hoverParts.join('\n'),
       };
 
       return {
-        contents: hoverContent
+        contents: hoverContent,
       };
     } catch (error) {
       connection.console.error(`Error getting parameter hover info: ${error instanceof Error ? error.message : String(error)}`);
@@ -1117,12 +1106,10 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
 // Code action provider
 connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
   const codeActions: CodeAction[] = [];
-  
+
   // Check for outdated version diagnostics
-  const outdatedDiagnostics = params.context.diagnostics.filter(
-    diagnostic => diagnostic.code === 'outdated-version' && diagnostic.source === 'mint'
-  );
-  
+  const outdatedDiagnostics = params.context.diagnostics.filter((diagnostic) => diagnostic.code === 'outdated-version' && diagnostic.source === 'rwx');
+
   for (const diagnostic of outdatedDiagnostics) {
     if (diagnostic.data) {
       const data = diagnostic.data as {
@@ -1133,7 +1120,7 @@ connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
         versionStart: number;
         versionEnd: number;
       };
-      
+
       // Create a code action to update to the latest version
       const codeAction: CodeAction = {
         title: `Update to latest version (${data.latestVersion})`,
@@ -1143,26 +1130,23 @@ connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
           changes: {
             [params.textDocument.uri]: [
               TextEdit.replace(
-                Range.create(
-                  Position.create(data.line, data.versionStart),
-                  Position.create(data.line, data.versionEnd)
-                ),
-                data.latestVersion
-              )
-            ]
-          }
-        }
+                Range.create(Position.create(data.line, data.versionStart), Position.create(data.line, data.versionEnd)),
+                data.latestVersion,
+              ),
+            ],
+          },
+        },
       };
-      
+
       codeActions.push(codeAction);
     }
   }
-  
+
   return codeActions;
 });
 
 // Register debug command handler
-connection.onRequest('mint/dumpDebugData', async (params: { uri: string }) => {
+connection.onRequest('rwx/dumpDebugData', async (params: { uri: string }) => {
   try {
     const document = documents.get(params.uri);
     if (!document) {
@@ -1173,7 +1157,7 @@ connection.onRequest('mint/dumpDebugData', async (params: { uri: string }) => {
       };
     }
 
-    if (!isMintWorkflowFile(document)) {
+    if (!isRwxRunFile(document)) {
       return { error: 'Not a Mint workflow file' };
     }
 

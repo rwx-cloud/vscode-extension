@@ -1,6 +1,6 @@
 {
-  "name": "mint-language-server",
-  "description": "Language server for Mint workflow files",
+  "name": "rwx-language-server",
+  "description": "Language server for RWX files",
   "version": "0.1.0",
   "main": "./out/server.js",
   "scripts": {

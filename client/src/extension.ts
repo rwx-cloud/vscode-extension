@@ -12,7 +12,7 @@ export function activate(context: ExtensionContext) {
 
   // Check if server file exists
   if (!fs.existsSync(serverModule)) {
-    window.showErrorMessage('Mint Language Server not found. Please compile the extension.');
+    window.showErrorMessage('RWX Language Server not found. Please compile the extension.');
     return;
   }
 
@@ -28,9 +28,9 @@ export function activate(context: ExtensionContext) {
 
   // Options to control the language client
   const clientOptions: LanguageClientOptions = {
-    // Register the server for mint-yaml language and yaml files in mint/rwx directories
+    // Register the server for rwx-run-yaml language and yaml files in mint/rwx directories
     documentSelector: [
-      { scheme: 'file', language: 'mint-yaml' },
+      { scheme: 'file', language: 'rwx-run-yaml' },
       { scheme: 'file', language: 'yaml', pattern: '**/.mint/**/*.{yml,yaml}' },
       { scheme: 'file', language: 'yaml', pattern: '**/.rwx/**/*.{yml,yaml}' },
       { scheme: 'file', pattern: '**/.mint/**/*.{yml,yaml}' },
@@ -43,10 +43,10 @@ export function activate(context: ExtensionContext) {
   };
 
   // Create the language client and start the client.
-  client = new LanguageClient('mintLanguageServer', 'Mint Language Server', serverOptions, clientOptions);
+  client = new LanguageClient('rwxLanguageServer', 'RWX Language Server', serverOptions, clientOptions);
 
   // Register the debug command
-  const disposable = commands.registerCommand('mint.dumpDebugData', async () => {
+  const disposable = commands.registerCommand('rwx.dumpDebugData', async () => {
     const editor = window.activeTextEditor;
     if (!editor) {
       window.showErrorMessage('No active editor');
@@ -69,7 +69,7 @@ export function activate(context: ExtensionContext) {
     }
 
     try {
-      const result = await client.sendRequest('mint/dumpDebugData', {
+      const result = await client.sendRequest('rwx/dumpDebugData', {
         uri: document.uri.toString(),
       });
 

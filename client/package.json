@@ -1,6 +1,6 @@
 {
-  "name": "mint-language-client",
-  "description": "VSCode client for Mint language server",
+  "name": "rwx-language-client",
+  "description": "VSCode client for RWX language server",
   "version": "0.1.0",
   "main": "./out/extension.js",
   "scripts": {

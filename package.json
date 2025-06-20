@@ -1,10 +1,16 @@
 {
-  "name": "mint-language-support",
-  "displayName": "Mint Language Support",
-  "description": "Language support for Mint workflow files",
+  "name": "rwx-vscode-extension",
+  "displayName": "RWX",
+  "description": "The RWX extension helps with authoring RWX CI/CD run definition files.",
   "version": "0.1.0",
-  "publisher": "rwx",
+  "publisher": "RWX",
   "icon": "icons/rwx-icon.png",
+  "license": "UNLICENSED",
+  "homepage": "https://github.com/rwx-cloud/mint",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rwx-cloud/mint.git"
+  },
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -12,6 +18,7 @@
     "Programming Languages"
   ],
   "keywords": [
+    "rwx",
     "mint",
     "yaml",
     "workflow",
@@ -21,10 +28,10 @@
   "contributes": {
     "languages": [
       {
-        "id": "mint-yaml",
+        "id": "rwx-run",
         "aliases": [
-          "Mint YAML",
-          "mint-yaml"
+          "RWX Run YAML",
+          "rwx-run-yaml"
         ],
         "configuration": "./language-configuration.json",
         "icon": {
@@ -34,35 +41,34 @@
         "filenamePatterns": [
           "**/.mint/*.yml",
           "**/.mint/*.yaml",
-          "**/.rwx/*.yml", 
+          "**/.rwx/*.yml",
           "**/.rwx/*.yaml"
         ]
       }
     ],
     "grammars": [
       {
-        "language": "mint-yaml",
-        "scopeName": "source.yaml.mint",
-        "path": "./syntaxes/mint-yaml.tmGrammar.json"
+        "language": "rwx-run",
+        "scopeName": "source.yaml.rwx",
+        "path": "./syntaxes/rwx-run-yaml.tmGrammar.json"
       }
     ],
     "commands": [
       {
-        "command": "mint.dumpDebugData",
-        "title": "Mint: Dump Debug Data",
-        "category": "Mint"
+        "command": "rwx.dumpDebugData",
+        "title": "Dump debug data",
+        "category": "RWX"
       }
     ],
     "iconThemes": [
       {
-        "id": "mint-icons",
-        "label": "Mint File Icons",
-        "path": "./icons/mint-icon-theme.json"
+        "id": "rwx-icons",
+        "label": "RWX File Icons",
+        "path": "./icons/rwx-icon-theme.json"
       }
     ]
   },
   "activationEvents": [
-    "onLanguage:mint-yaml",
     "onLanguage:yaml"
   ],
   "scripts": {
@@ -72,7 +78,8 @@
     "postinstall": "cd client && npm install && cd ../server && npm install",
     "test": "sh ./scripts/e2e.sh",
     "package": "vsce package",
-    "install-local": "npm run compile && npm run package && code --install-extension mint-language-support-0.1.0.vsix --force"
+    "bundle-parser": "esbuild ../packages/task-parser/yaml-dsl/parser2.ts --log-level=warning --bundle --platform=node --target=node18 --outfile=./server/support/parser.js",
+    "install-local": "npm run bundle-parser && npm run compile && npm run package && code --install-extension rwx-vscode-extension-0.1.0.vsix --force"
   },
   "dependencies": {
     "vscode-languageclient": "^8.1.0",

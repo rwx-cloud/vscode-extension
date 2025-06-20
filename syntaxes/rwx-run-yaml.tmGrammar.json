@@ -1,6 +1,6 @@
 {
-  "name": "Mint YAML",
-  "scopeName": "source.yaml.mint",
+  "name": "RWX Run YAML",
+  "scopeName": "source.yaml.rwx",
   "fileTypes": ["yml", "yaml"],
   "patterns": [
     {
