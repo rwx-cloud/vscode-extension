@@ -36054,7 +36054,9 @@ var TStackEntry = Type.Object({
   fileName: Type.String(),
   line: Type.Number(),
   column: Type.Number(),
-  name: Type.Optional(Type.String())
+  name: Type.Optional(Type.String()),
+  endLine: Type.Optional(Type.Number()),
+  endColumn: Type.Optional(Type.Number())
 });
 var TUserMessage = Type.Object({
   type: Type.String(),
@@ -54489,29 +54491,39 @@ var YamlParser = class _YamlParser {
       if (error.code === "DUPLICATE_KEY") {
         message = "You cannot declare the same key twice.";
       }
-      const { line, column } = this.locationOfIndex(error.pos[0], fileName);
-      this.messages.push({ message, severity: "error", stackTrace: [{ fileName, line, column }] });
+      const start = this.locationOfIndex(error.pos[0], fileName);
+      const end = this.locationOfIndex(error.pos[1], fileName);
+      this.messages.push({
+        message,
+        severity: "error",
+        stackTrace: [{ fileName, line: start.line, column: start.column, endLine: end.line, endColumn: end.column }]
+      });
     }
     for (const warning of doc.warnings) {
-      const { line, column } = this.locationOfIndex(warning.pos[0], fileName);
+      const start = this.locationOfIndex(warning.pos[0], fileName);
+      const end = this.locationOfIndex(warning.pos[1], fileName);
       if (warning.code === "TAG_RESOLVE_FAILED") {
         const tagName = warning.message.match(/Unresolved tag: (.*)/)?.[1];
         if (tagName) {
           this.messages.push({
             message: `You started a value with a \`!\`, but in YAML \`!\` indicates a tag, not a value. Try wrapping your value in quotes instead: \`"${tagName}"\``,
             severity: "error",
-            stackTrace: [{ fileName, line, column }]
+            stackTrace: [{ fileName, line: start.line, column: start.column, endLine: end.line, endColumn: end.column }]
           });
         } else {
           logger_default.warn(`Tag resolve failure did not match expected regex`, {
-            codeFrame: this.generateCodeFrame({ fileName, line, column }),
+            codeFrame: this.generateCodeFrame({ fileName, line: start.line, column: start.column }),
             message: warning.message
           });
-          this.messages.push({ message: warning.message, severity: "error", stackTrace: [{ fileName, line, column }] });
+          this.messages.push({
+            message: warning.message,
+            severity: "error",
+            stackTrace: [{ fileName, line: start.line, column: start.column, endLine: end.line, endColumn: end.column }]
+          });
         }
       } else {
         logger_default.warn(`Detected unhandled YAML parsing warning code: ${warning.code}`, {
-          codeFrame: this.generateCodeFrame({ fileName, line, column })
+          codeFrame: this.generateCodeFrame({ fileName, line: start.line, column: start.column })
         });
       }
     }
@@ -54519,11 +54531,11 @@ var YamlParser = class _YamlParser {
       this.rootNode = null;
     } else {
       for (const [source, startIndex] of this.detectCircularAliases(doc.contents).entries()) {
-        const { line, column } = this.locationOfIndex(startIndex, fileName);
+        const start = this.locationOfIndex(startIndex, fileName);
         this.messages.push({
           message: `Circular alias detected ${codeQuote(source.toString())}`,
           severity: "error",
-          stackTrace: [{ fileName, line, column }]
+          stackTrace: [{ fileName, line: start.line, column: start.column }]
         });
       }
       this.rootNode = this.synchronousDealias(doc.contents)[0];
@@ -54612,13 +54624,13 @@ var YamlParser = class _YamlParser {
       didDealias = true;
       aliasName = `*${node.source}`;
       const newNode = node.resolve(this.doc);
-      const { line, column } = this.locationOfIndex(node.range[0], this.currentFileName);
+      const { line, column, endLine, endColumn } = this.locationRangeOfNode(node, this.currentFileName);
       if (newNode === void 0) {
         throw new ParsingError([
           this.formatMessage({
             message: `Unresolved alias (the anchor must be set before the alias)`,
             severity: "error",
-            stackTrace: [...this.stack, { fileName: this.currentFileName, line, column }]
+            stackTrace: [...this.stack, { fileName: this.currentFileName, line, column, endLine, endColumn }]
           })
         ]);
       }
@@ -56572,12 +56584,24 @@ var YamlParser = class _YamlParser {
     const { line, column } = location;
     return { line: line + 1, column: column + 1 };
   }
+  locationRangeOfNode(node, fileName) {
+    if (!fileName) {
+      fileName = this.currentFileName;
+    }
+    const start = this.locationOfIndex(node.range[0], fileName);
+    const end = this.locationOfIndex(node.range[1], fileName);
+    return { line: start.line, column: start.column, endLine: end.line, endColumn: end.column };
+  }
   error(messageLines, node, fileName) {
     if (!fileName) {
       fileName = this.currentFileName;
     }
-    const { line, column } = this.locationOfIndex(node.range[0], fileName);
-    this.messages.push({ message: messageLines.join("\n"), severity: "error", stackTrace: [...this.stack, { fileName, line, column }] });
+    const { line, column, endLine, endColumn } = this.locationRangeOfNode(node, fileName);
+    this.messages.push({
+      message: messageLines.join("\n"),
+      severity: "error",
+      stackTrace: [...this.stack, { fileName, line, column, endLine, endColumn }]
+    });
   }
   warning({
     warningCollector,
@@ -56586,8 +56610,8 @@ var YamlParser = class _YamlParser {
     advice,
     docs
   }) {
-    const { line, column } = this.locationOfIndex(node.range[0], this.currentFileName);
-    const stackEntry = { fileName: this.currentFileName, line, column };
+    const { line, column, endLine, endColumn } = this.locationRangeOfNode(node, this.currentFileName);
+    const stackEntry = { fileName: this.currentFileName, line, column, endLine, endColumn };
     warningCollector.push(
       buildMessage({
         type: "warning" /* Warning */,
@@ -56599,15 +56623,20 @@ var YamlParser = class _YamlParser {
       })
     );
   }
-  generateCodeFrame({ line, column, fileName }) {
+  generateCodeFrame({ line, column, fileName, endLine, endColumn }) {
     const frameLines = verifyExists(this.sourceMap[fileName]).split("\n");
     const lineNumbers = [line - 2, line - 1, line, line + 1, line + 2].filter((l) => !!frameLines[l - 1]);
     const maxLineNumberLength = Math.max(...lineNumbers.map((l) => l.toString().length));
     return lineNumbers.map((lineNumber) => {
       const lineString = `${lineNumber.toString().padStart(maxLineNumberLength, " ")} | ${frameLines[lineNumber - 1]}`;
       if (lineNumber === line) {
+        let caretCount = 1;
+        if (endLine !== void 0 && endColumn !== void 0 && endLine === line && endColumn > column) {
+          caretCount = endColumn - column;
+        }
+        const carets = "^".repeat(caretCount);
         return `> ${lineString}
-  ${"".padStart(maxLineNumberLength, " ")} | ${"".padStart(column - 1, " ")}^`;
+  ${"".padStart(maxLineNumberLength, " ")} | ${"".padStart(column - 1, " ")}${carets}`;
       } else {
         return `  ${lineString}`;
       }

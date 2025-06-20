@@ -225,6 +225,8 @@ export type StackEntry = {
   line: number;
   column: number;
   name?: string;
+  endLine?: number;
+  endColumn?: number;
 };
 
 export type UserMessage = {
@@ -352,6 +354,8 @@ export type SharedTaskDefinition = {
       line: number;
       column: number;
       name?: string;
+      endLine?: number;
+      endColumn?: number;
     }>;
     frame?: string;
   }>;
@@ -455,6 +459,8 @@ export type EmbeddedRunTaskDefinition = {
       line: number;
       column: number;
       name?: string;
+      endLine?: number;
+      endColumn?: number;
     }>;
     frame?: string;
   }>;
@@ -486,6 +492,8 @@ export type PartialRunDefinition = {
       line: number;
       column: number;
       name?: string;
+      endLine?: number;
+      endColumn?: number;
     }>;
     frame?: string;
   }>;

@@ -299,16 +299,27 @@ async function validateTextDocumentForDiagnostics(textDocument: TextDocument): P
 
     // Convert parser errors to diagnostics
     for (const error of result.errors) {
+      // Get the most specific stack trace entry (usually the last one)
+      const stackEntry = error.stackTrace && error.stackTrace.length > 0 
+        ? error.stackTrace[error.stackTrace.length - 1] 
+        : null;
+      
+      // Use end position from stack trace if available, otherwise fall back to approximation
+      const startLine = (error.line ?? 1) - 1; // Convert to 0-based
+      const startChar = (error.column ?? 1) - 1; // Convert to 0-based
+      const endLine = stackEntry?.endLine ? stackEntry.endLine - 1 : startLine;
+      const endChar = stackEntry?.endColumn ? stackEntry.endColumn - 1 : startChar + 10;
+
       const diagnostic: Diagnostic = {
         severity: DiagnosticSeverity.Error,
         range: {
           start: {
-            line: (error.line ?? 1) - 1, // Convert to 0-based
-            character: (error.column ?? 1) - 1, // Convert to 0-based
+            line: startLine,
+            character: startChar,
           },
           end: {
-            line: (error.line ?? 1) - 1,
-            character: (error.column ?? 1) + 10, // Approximate end position
+            line: endLine,
+            character: endChar,
           },
         },
         message: error.message,
