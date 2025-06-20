@@ -54571,10 +54571,17 @@ var YamlParser = class _YamlParser {
     return partialRunDefinition;
   }
   static async safelyParseRun(fileName, source, snippets) {
-    const parser = _YamlParser.createParser(fileName, source, snippets);
-    const partialRunDefinition = await parser.parseRun();
-    const { errors } = parser.formatMessages();
-    return { partialRunDefinition, errors };
+    try {
+      const parser = _YamlParser.createParser(fileName, source, snippets);
+      const partialRunDefinition = await parser.parseRun();
+      const { errors } = parser.formatMessages();
+      return { partialRunDefinition, errors };
+    } catch (error) {
+      if (error instanceof ParsingError) {
+        return { partialRunDefinition: { tasks: [], warningMessages: [] }, errors: error.asMessages() };
+      }
+      throw error;
+    }
   }
   static async parseTaskOrTaskList(fileName, source, snippets) {
     const parser = _YamlParser.createParser(fileName, source, snippets);
