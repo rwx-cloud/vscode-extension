@@ -906,11 +906,143 @@ function getWordRangeAtPosition(document: TextDocument, position: Position): { w
   };
 }
 
+// Helper function to detect YAML alias at position and extract alias name
+function getYamlAliasAtPosition(document: TextDocument, position: Position): { aliasName: string; range: Range } | null {
+  const line = document.getText().split('\n')[position.line];
+  if (!line) return null;
+
+  // Find all alias occurrences in the line
+  const aliasRegex = /\*([a-zA-Z0-9_-]+)/g;
+  let match;
+  
+  while ((match = aliasRegex.exec(line)) !== null) {
+    const aliasStart = match.index;
+    const aliasEnd = match.index + match[0].length;
+    
+    // Check if the cursor position is within this alias
+    if (position.character >= aliasStart && position.character <= aliasEnd) {
+      if (match[1]) {
+        return {
+          aliasName: match[1],
+          range: Range.create(Position.create(position.line, aliasStart), Position.create(position.line, aliasEnd))
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+// Helper function to find YAML anchor definition in document
+function findYamlAnchor(document: TextDocument, anchorName: string): Position | null {
+  const lines = document.getText().split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+
+    // Look for anchor pattern: &anchorName
+    const anchorPattern = new RegExp(`&${escapeRegExp(anchorName)}(?![a-zA-Z0-9_-])`);
+    const match = line.match(anchorPattern);
+    if (match && match.index !== undefined) {
+      return Position.create(i, match.index);
+    }
+  }
+
+  return null;
+}
+
+// Helper function to extract YAML anchor content for display
+function getYamlAnchorContent(document: TextDocument, anchorName: string): string | null {
+  const lines = document.getText().split('\n');
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+
+    // Look for anchor pattern: &anchorName
+    const anchorPattern = new RegExp(`&${escapeRegExp(anchorName)}(?![a-zA-Z0-9_-])`);
+    const match = line.match(anchorPattern);
+    if (match && match.index !== undefined) {
+      // Found the anchor, now extract its content
+      const anchorLine = line;
+      const afterAnchor = anchorLine.substring(match.index + match[0].length);
+      
+      // If there's content on the same line after the anchor (inline anchor)
+      if (afterAnchor.trim()) {
+        return afterAnchor.trim();
+      }
+      
+      // Look for content on subsequent lines with proper indentation (block anchor)
+      const lineIndent = line.match(/^\s*/)?.[0].length || 0;
+      const contentLines: string[] = [];
+      
+      for (let j = i + 1; j < lines.length; j++) {
+        const nextLine = lines[j];
+        if (!nextLine || !nextLine.trim()) {
+          // Empty line, continue but don't break (might be whitespace in YAML block)
+          continue;
+        }
+        
+        const nextIndent = nextLine.match(/^\s*/)?.[0].length || 0;
+        
+        // If we hit a line with same or less indentation than the anchor line, we've reached the end
+        if (nextIndent <= lineIndent) {
+          break;
+        }
+        
+        // Add this line to the content (preserve relative indentation)
+        const relativeIndent = nextIndent - lineIndent - 2; // Subtract anchor's indent + typical 2 spaces
+        const indentStr = relativeIndent > 0 ? ' '.repeat(relativeIndent) : '';
+        contentLines.push(indentStr + nextLine.trim());
+      }
+      
+      if (contentLines.length > 0) {
+        return contentLines.join('\n');
+      }
+      
+      // If no content found, return placeholder
+      return `(anchor: ${anchorName})`;
+    }
+  }
+
+  return null;
+}
+
 // Definition provider
 connection.onDefinition(async (params: TextDocumentPositionParams): Promise<LocationLink[] | null> => {
   const document = documents.get(params.textDocument.uri);
   if (!document || !isRwxRunFile(document)) {
     return null;
+  }
+
+  // Check if we're clicking on a YAML alias for go-to-anchor functionality
+  const aliasInfo = getYamlAliasAtPosition(document, params.position);
+  if (aliasInfo) {
+    try {
+      // Find the corresponding anchor
+      const anchorPosition = findYamlAnchor(document, aliasInfo.aliasName);
+      if (!anchorPosition) {
+        return null;
+      }
+
+      // Create a range that covers the entire anchor at the definition
+      const anchorEnd = Position.create(anchorPosition.line, anchorPosition.character + aliasInfo.aliasName.length + 1); // +1 for the &
+      const anchorRange = Range.create(anchorPosition, anchorEnd);
+
+      // Return a LocationLink from alias to anchor
+      const locationLink: LocationLink = {
+        originSelectionRange: aliasInfo.range, // Highlights the source alias
+        targetUri: document.uri,
+        targetRange: anchorRange,
+        targetSelectionRange: anchorRange,
+      };
+
+      return [locationLink];
+    } catch (error) {
+      connection.console.error(`Error in YAML alias go-to-definition: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
   }
 
   // Check if we're clicking on an embedded run file path
@@ -988,6 +1120,29 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
   const document = documents.get(params.textDocument.uri);
   if (!document || !isRwxRunFile(document)) {
     return null;
+  }
+
+  // Check if we're hovering over a YAML alias
+  const aliasInfo = getYamlAliasAtPosition(document, params.position);
+  if (aliasInfo) {
+    try {
+      // Get the anchor content
+      const anchorContent = getYamlAnchorContent(document, aliasInfo.aliasName);
+      
+      if (anchorContent) {
+        const hoverContent = {
+          kind: MarkupKind.Markdown,
+          value: `**YAML Alias: \`*${aliasInfo.aliasName}\`**\n\n\`\`\`yaml\n${anchorContent}\n\`\`\``,
+        };
+
+        return {
+          contents: hoverContent,
+          range: aliasInfo.range,
+        };
+      }
+    } catch (error) {
+      connection.console.error(`Error getting YAML alias hover info: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   const lines = document.getText().split('\n');

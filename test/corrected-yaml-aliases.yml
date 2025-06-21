@@ -1,0 +1,48 @@
+# ✅ CORRECT YAML Alias Examples
+# The alias name (*name) MUST match the anchor name (&name) exactly
+
+aliases:
+  # Inline anchor examples
+  abc: &abc [a, b, c]        # Anchor: &abc, Content: [a, b, c]
+  simple: &simple "hello"    # Anchor: &simple, Content: "hello"
+  
+  # Block anchor examples  
+  - &env_vars
+    FOO: bar
+    TEST: value
+    DEBUG: true
+    
+  - &matrix_config
+    matrix:
+      os: [linux, macos, windows]
+      arch: [x86, arm64]
+
+base:
+  os: ubuntu 24.04
+  tag: 1.0
+
+tasks:
+  - key: task1
+    run: echo "testing"
+    env: *env_vars           # ✅ Correctly references &env_vars
+    parallel: *matrix_config # ✅ Correctly references &matrix_config
+    
+  - key: task2
+    run: *simple             # ✅ Correctly references &simple (inline)
+    outputs: *abc            # ✅ Correctly references &abc (inline array)
+    
+  - key: task3
+    run: echo "merge example"
+    env:
+      <<: *env_vars          # ✅ Merge operator with alias
+      EXTRA: additional_value
+
+# ❌ INCORRECT Examples (commented out to avoid errors):
+# bad_example: *nonexistent   # ❌ No matching &nonexistent anchor
+# abc: &xyz [a, b, c]         # ❌ Anchor name (xyz) differs from key (abc)
+# x: *abc                     # ❌ Would fail because &abc doesn't exist (only &xyz)
+
+# 🎯 How to test:
+# 1. Hover over any *alias_name to see its definition
+# 2. Ctrl+Click or F12 on any *alias_name to jump to its &anchor
+# 3. Both should work consistently now!

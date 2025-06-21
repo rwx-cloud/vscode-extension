@@ -1,0 +1,11 @@
+# Corrected YAML - aliases must match anchor names exactly
+aliases:
+  abc: &abc [a, b, c]   # Anchor name must match alias name
+
+x: *abc                 # This now correctly references &abc
+
+# Alternative style:
+aliases2:
+  def: &my_list [d, e, f]
+
+y: *my_list             # References &my_list
