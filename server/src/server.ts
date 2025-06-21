@@ -22,6 +22,8 @@ import {
   CodeActionKind,
   CodeActionParams,
   TextEdit,
+  Location,
+  ReferenceParams,
 } from 'vscode-languageserver/node';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -171,6 +173,7 @@ connection.onInitialize((params: InitializeParams) => {
       },
       definitionProvider: true,
       hoverProvider: true,
+      referencesProvider: true,
       codeActionProvider: {
         codeActionKinds: [CodeActionKind.QuickFix],
       },
@@ -1009,6 +1012,62 @@ function getYamlAnchorContent(document: TextDocument, anchorName: string): strin
   return null;
 }
 
+// Helper function to detect YAML anchor at position and extract anchor name
+function getYamlAnchorAtPosition(document: TextDocument, position: Position): { anchorName: string; range: Range } | null {
+  const line = document.getText().split('\n')[position.line];
+  if (!line) return null;
+
+  // Find all anchor occurrences in the line
+  const anchorRegex = /&([a-zA-Z0-9_-]+)/g;
+  let match;
+  
+  while ((match = anchorRegex.exec(line)) !== null) {
+    const anchorStart = match.index;
+    const anchorEnd = match.index + match[0].length;
+    
+    // Check if the cursor position is within this anchor
+    if (position.character >= anchorStart && position.character <= anchorEnd) {
+      if (match[1]) {
+        return {
+          anchorName: match[1],
+          range: Range.create(Position.create(position.line, anchorStart), Position.create(position.line, anchorEnd))
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+// Helper function to find all aliases that reference a given anchor
+function findYamlAliasReferences(document: TextDocument, anchorName: string): Location[] {
+  const lines = document.getText().split('\n');
+  const locations: Location[] = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+
+    // Find all alias occurrences in this line
+    const aliasRegex = new RegExp(`\\*${escapeRegExp(anchorName)}(?![a-zA-Z0-9_-])`, 'g');
+    let match;
+    
+    while ((match = aliasRegex.exec(line)) !== null) {
+      const aliasStart = match.index;
+      const aliasEnd = match.index + match[0].length;
+      
+      const location: Location = {
+        uri: document.uri,
+        range: Range.create(Position.create(i, aliasStart), Position.create(i, aliasEnd))
+      };
+      
+      locations.push(location);
+    }
+  }
+  
+  return locations;
+}
+
 // Definition provider
 connection.onDefinition(async (params: TextDocumentPositionParams): Promise<LocationLink[] | null> => {
   const document = documents.get(params.textDocument.uri);
@@ -1267,6 +1326,61 @@ connection.onHover(async (params: TextDocumentPositionParams): Promise<Hover | n
   }
 
   return null;
+});
+
+// References provider
+connection.onReferences((params: ReferenceParams): Location[] => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document || !isRwxRunFile(document)) {
+    return [];
+  }
+
+  try {
+    // Check if we're on a YAML anchor
+    const anchorInfo = getYamlAnchorAtPosition(document, params.position);
+    if (anchorInfo) {
+      // Find all aliases that reference this anchor
+      const references = findYamlAliasReferences(document, anchorInfo.anchorName);
+      
+      // If includeDeclaration is true, also include the anchor itself
+      if (params.context.includeDeclaration) {
+        const anchorLocation: Location = {
+          uri: document.uri,
+          range: anchorInfo.range
+        };
+        references.unshift(anchorLocation); // Add anchor at the beginning
+      }
+      
+      return references;
+    }
+
+    // Optionally: Handle the reverse case - if on an alias, find other aliases and the anchor
+    const aliasInfo = getYamlAliasAtPosition(document, params.position);
+    if (aliasInfo) {
+      const references: Location[] = [];
+      
+      // Find the anchor
+      const anchorPosition = findYamlAnchor(document, aliasInfo.aliasName);
+      if (anchorPosition && params.context.includeDeclaration) {
+        const anchorEnd = Position.create(anchorPosition.line, anchorPosition.character + aliasInfo.aliasName.length + 1);
+        const anchorRange = Range.create(anchorPosition, anchorEnd);
+        references.push({
+          uri: document.uri,
+          range: anchorRange
+        });
+      }
+      
+      // Find all other aliases
+      const allAliases = findYamlAliasReferences(document, aliasInfo.aliasName);
+      references.push(...allAliases);
+      
+      return references;
+    }
+  } catch (error) {
+    connection.console.error(`Error in YAML references provider: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  
+  return [];
 });
 
 // Code action provider

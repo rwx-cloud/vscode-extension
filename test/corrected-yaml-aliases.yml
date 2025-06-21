@@ -44,5 +44,7 @@ tasks:
 
 # 🎯 How to test:
 # 1. Hover over any *alias_name to see its definition
-# 2. Ctrl+Click or F12 on any *alias_name to jump to its &anchor
-# 3. Both should work consistently now!
+# 2. Ctrl+Click or F12 on any *alias_name to jump to its &anchor  
+# 3. Shift+F12 or right-click "Find All References" on any &anchor to see all *aliases that use it
+# 4. Shift+F12 on any *alias to see the &anchor and all other *aliases
+# 5. All features should work consistently now!

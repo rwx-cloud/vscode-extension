@@ -1,0 +1,67 @@
+# 📖 YAML References Test File
+# Perfect for testing "Find All References" functionality
+
+aliases:
+  # This anchor has multiple references
+  - &shared_command echo "I am used multiple times!"
+  
+  # This anchor has few references  
+  - &build_config
+    timeout-minutes: 30
+    retry: 3
+    
+  # This anchor is used only once
+  - &rare_setting special_value
+
+base:
+  os: ubuntu 24.04
+  tag: 1.0
+
+tasks:
+  # Multiple uses of shared_command - test references on &shared_command
+  - key: task1
+    run: *shared_command     # Reference #1
+    
+  - key: task2  
+    run: *shared_command     # Reference #2
+    
+  - key: task3
+    run: *shared_command     # Reference #3
+    env:
+      CMD: *shared_command   # Reference #4 (nested)
+      
+  # Multiple uses of build_config - test references on &build_config  
+  - key: task4
+    <<: *build_config        # Reference #1
+    run: echo "first"
+    
+  - key: task5
+    <<: *build_config        # Reference #2  
+    run: echo "second"
+    
+  # Single use of rare_setting - test references on &rare_setting
+  - key: task6
+    run: echo "rare"
+    env:
+      RARE: *rare_setting    # Only reference
+
+# 🧪 Testing Instructions:
+# 
+# 1. Find All References on &shared_command (should find 4 aliases)
+#    - Right-click on "&shared_command" (line 7)
+#    - Select "Find All References" or press Shift+F12
+#    - Should highlight lines 19, 22, 25, 26
+#
+# 2. Find All References on &build_config (should find 2 aliases)
+#    - Right-click on "&build_config" (line 10) 
+#    - Should highlight lines 30, 34
+#
+# 3. Find All References on &rare_setting (should find 1 alias)
+#    - Right-click on "&rare_setting" (line 14)
+#    - Should highlight line 40
+#
+# 4. Find All References from an alias (should find anchor + other aliases)
+#    - Right-click on "*shared_command" (any of lines 19, 22, 25, 26)
+#    - Should highlight the anchor (&shared_command) plus all other aliases
+#
+# 5. Make sure "Include Declaration" option works correctly
