@@ -54474,6 +54474,55 @@ function didYouMean(str, candidates) {
 }
 
 // ../packages/task-parser/yaml-dsl/parser2.ts
+var FRIENDLY_YAML_MESSAGES = {
+  ALIAS_PROPS: "When using an alias, you cannot add an anchor or a YAML tag before the alias.",
+  BAD_ALIAS: "In YAML, values starting with `*` are aliases, and aliases must have a valid name. If you intended to use this as a value, wrap it in quotes.",
+  BAD_COLLECTION_TYPE: void 0,
+  // This one should be impossible in a workflow file since we don't resolve tags
+  BAD_DIRECTIVE: "You started a value with a `%`, but in YAML `%` indicates a directive, not a value. Try wrapping your value in quotes instead.",
+  BAD_DQ_ESCAPE: "This escape sequence is invalid. Backslashes inside of a double-quoted string must be followed by a valid character such as `\n`, `	`, or `\\`.",
+  BAD_INDENT: "This line is incorrectly indented. Check the spacing and alignment of your YAML.",
+  BAD_PROP_ORDER: "In YAML, anchors and tags must be after the ? indicator. If you intended this to be a string value, try wrapping it in quotes.",
+  BAD_SCALAR_START: "This is a reserved character in YAML. Try wrapping it in quotes.",
+  BLOCK_AS_IMPLICIT_KEY: "This line either is incorrectly indented or is ambiguous about what is the key and what is the value; try quoting the value.",
+  BLOCK_IN_FLOW: "In YAML, when declaring an array with `[]`, you cannot use dashes. If you intended to include a value that starts with a dash, wrap the value in quotes.",
+  DUPLICATE_KEY: "You cannot declare the same key twice in a YAML map or object.",
+  IMPOSSIBLE: void 0,
+  // This by definition should not happen
+  KEY_OVER_1024_CHARS: "Keys in YAML cannot be longer than 1024 characters.",
+  MISSING_CHAR: void 0,
+  // These are explicitly handled based on the mssage because there are many different cases
+  MULTILINE_IMPLICIT_KEY: "This line is incorrectly indented. Check the spacing and alignment of your YAML.",
+  MULTIPLE_ANCHORS: "You can only specify one YAML anchor at a time.",
+  MULTIPLE_DOCS: "You cannot declare multiple documents with `---`",
+  MULTIPLE_TAGS: "You can only specify one YAML tag at a time.",
+  NON_STRING_KEY: "Keys in YAML maps or objects must be strings. Try wrapping this value in quotes.",
+  TAB_AS_INDENT: "You must use spaces, not tabs, for indentation.",
+  TAG_RESOLVE_FAILED: void 0,
+  // We don't resolve tags at all
+  UNEXPECTED_TOKEN: "This character was unexpected here."
+};
+var FRIENDLY_YAML_MESSAGES_FOR_MISSING_CHAR = {
+  "Block collection cannot start on same line with directives-end marker": "This list must start on a new line after the '---' or '...' marker.",
+  "Comments must be separated from other tokens by white space characters": "In YAML, you must include a space before starting a comment with '#'.",
+  "Tags and anchors must be separated from the next token by white space": "There must be a space between an anchor and the value after it. If you didn't intend to make a YAML anchor, wrap this value in quotes.",
+  "Missing space after : in flow map": "When using `{`, a space is required after each colon (`:`).",
+  "Missing space after : in flow sequence": "In inline lists (using `[`), a space is required after each colon (`:`) used in maps or objects inside the list.",
+  "Missing closing 'quote": "Expected to find a closing single quote (').",
+  'Missing closing "quote': 'Expected to find a closing double quote (").',
+  "Implicit map keys need to be followed by map values": "This line is incorrectly indented or formatted. Make sure keys are followed by values (key: value).",
+  "Sequence item without - indicator": "Each item in a list must start with a dash and a space (e.g., '- item').",
+  "Block scalars with more-indented leading empty lines must use an explicit indentation indicator": "For multi-line text (`|` or `>`), if empty lines are indented more than the content, you must specify the indentation after the `|` or `>` (e.g., `|2`).",
+  "Missing newline after block sequence props": "Each list item (starting with -) must be followed by a newline or a space before the value.",
+  "Missing directives-end/doc-start indicator line": "YAML expects a '---' to mark the start of a document here.",
+  "Missing directives-end indicator line": "YAML expects a '---' marker to separate directives from content.",
+  "Missing , or : between flow sequence items": "In an inline list (using [ ]), items must be separated by commas.",
+  "Missing , or : between flow map items": "In an inline map or object (using { }), key-value pairs must be separated by commas, and keys must have colons.",
+  "Flow map must end with a }": "An inline map or object (using { }) is missing its closing '}'.",
+  "Flow sequence must end with a ]": "An inline list (using [ ]) is missing its closing ']'.",
+  "Flow map in block collection must be sufficiently indented and end with a }": "An inline map or object inside your YAML needs to be indented properly and closed with '}'.",
+  "Flow sequence in block collection must be sufficiently indented and end with a ]": "An inline list inside your YAML needs to be indented properly and closed with ']'."
+};
 var YamlParser = class _YamlParser {
   constructor(fileName, fileSource, doc, snippets) {
     this.doc = doc;
@@ -54487,10 +54536,7 @@ var YamlParser = class _YamlParser {
       this.sourceMap[snippet.filePath] = snippet.fileContents;
     }
     for (const error of doc.errors) {
-      let message = error.message;
-      if (error.code === "DUPLICATE_KEY") {
-        message = "You cannot declare the same key twice.";
-      }
+      const message = this.getUserFriendlyYamlMessage(error);
       const start = this.locationOfIndex(error.pos[0], fileName);
       const end = this.locationOfIndex(error.pos[1], fileName);
       this.messages.push({
@@ -54548,6 +54594,17 @@ var YamlParser = class _YamlParser {
   warnedAboutUsingCacheInsteadOfCacheKey = false;
   currentFileName;
   stack;
+  getUserFriendlyYamlMessage(error) {
+    let friendlyMessage = FRIENDLY_YAML_MESSAGES[error.code];
+    if (!friendlyMessage && error.code === "MISSING_CHAR") {
+      friendlyMessage = FRIENDLY_YAML_MESSAGES_FOR_MISSING_CHAR[error.message];
+    }
+    if (friendlyMessage) {
+      return friendlyMessage;
+    }
+    logger_default.warn("Unexpected YAML error encountered while parsing", { message: error.message, code: error.code });
+    return `Error while parsing YAML: ${error.message}`;
+  }
   detectCircularAliases(document) {
     const circularAliases = /* @__PURE__ */ new Map();
     YAML.visit(document, {
