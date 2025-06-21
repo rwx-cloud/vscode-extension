@@ -27,6 +27,8 @@ try {
     ['getYamlAnchorContent', serverCode.includes('getYamlAnchorContent')],
     ['getYamlAnchorAtPosition', serverCode.includes('getYamlAnchorAtPosition')],
     ['findYamlAliasReferences', serverCode.includes('findYamlAliasReferences')],
+    ['getTaskKeyAtPosition', serverCode.includes('getTaskKeyAtPosition')],
+    ['findTaskUseReferences', serverCode.includes('findTaskUseReferences')],
     ['YAML alias regex', serverCode.includes('\\*([a-zA-Z0-9_-]+)')],
     ['Anchor regex', serverCode.includes('&${escapeRegExp(anchorName)}')],
     ['Hover support', serverCode.includes('Check if we\'re hovering over a YAML alias')],
@@ -134,10 +136,14 @@ console.log('\n=== YAML Alias Tests Complete ===\n');
 
 console.log('💡 To test full integration:');
 console.log('   1. Run: npm run install-local');
-console.log('   2. Open test/corrected-yaml-aliases.yml in VS Code');
-console.log('   3. Use Ctrl+Click or F12 on any *alias_name to jump to anchor');
-console.log('   4. Hover over any *alias_name to see its definition content');
-console.log('   5. Use Shift+F12 on any &anchor_name to find all references');
-console.log('   6. Open test/references-test.yml for comprehensive references testing');
-console.log('   7. Verify all features work correctly');
+console.log('   2. Test YAML aliases:');
+console.log('      - Open test/corrected-yaml-aliases.yml in VS Code');
+console.log('      - Ctrl+Click or F12 on any *alias_name to jump to anchor');
+console.log('      - Hover over any *alias_name to see its definition content');
+console.log('      - Shift+F12 on any &anchor_name to find all references');
+console.log('   3. Test task dependencies:');
+console.log('      - Open test/task-references-test.yml in VS Code');
+console.log('      - Shift+F12 on any task key definition to find use references');
+console.log('      - Ctrl+Click on task names in use: contexts to go to definition');
+console.log('   4. Verify all features work correctly');
 console.log('');

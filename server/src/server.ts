@@ -1068,6 +1068,82 @@ function findYamlAliasReferences(document: TextDocument, anchorName: string): Lo
   return locations;
 }
 
+// Helper function to detect if cursor is on a task key definition
+function getTaskKeyAtPosition(document: TextDocument, position: Position): { taskKey: string; range: Range } | null {
+  const line = document.getText().split('\n')[position.line];
+  if (!line) return null;
+
+  // Look for "key: taskname" pattern
+  const keyPattern = /^\s*(?:-\s+)?key:\s*['"]?([a-zA-Z0-9_-]+)['"]?\s*$/;
+  const match = line.match(keyPattern);
+  
+  if (match && match[1]) {
+    const taskKey = match[1];
+    const keyIndex = line.indexOf(taskKey);
+    
+    // Check if cursor is on the task key value
+    if (position.character >= keyIndex && position.character <= keyIndex + taskKey.length) {
+      return {
+        taskKey,
+        range: Range.create(Position.create(position.line, keyIndex), Position.create(position.line, keyIndex + taskKey.length))
+      };
+    }
+  }
+
+  return null;
+}
+
+// Helper function to find all use references to a task key
+function findTaskUseReferences(document: TextDocument, taskKey: string): Location[] {
+  const lines = document.getText().split('\n');
+  const locations: Location[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line || !line.includes('use:')) continue;
+
+    // Find task key in simple use context: "use: taskKey"
+    const simpleUsePattern = new RegExp(`use:\\s*['"]?${escapeRegExp(taskKey)}['"]?\\s*$`);
+    if (simpleUsePattern.test(line)) {
+      const keyIndex = line.lastIndexOf(taskKey);
+      if (keyIndex !== -1) {
+        locations.push({
+          uri: document.uri,
+          range: Range.create(Position.create(i, keyIndex), Position.create(i, keyIndex + taskKey.length))
+        });
+      }
+    }
+
+    // Find task key in array use context: "use: [taskKey, other]" or "use: [other, taskKey]"
+    const arrayUsePattern = new RegExp(`use:\\s*\\[([^\\]]+)\\]`);
+    const arrayMatch = line.match(arrayUsePattern);
+    if (arrayMatch && arrayMatch[1]) {
+      const arrayContent = arrayMatch[1];
+      const arrayStart = arrayMatch.index! + arrayMatch[0].indexOf('[') + 1;
+      
+      // Split by commas and find our task key
+      const items = arrayContent.split(',');
+      let currentPos = 0;
+      
+      for (const item of items) {
+        const trimmedItem = item.trim().replace(/['"`]/g, ''); // Remove quotes
+        if (trimmedItem === taskKey) {
+          const itemStart = arrayContent.indexOf(item, currentPos);
+          const keyStart = arrayStart + itemStart + item.indexOf(taskKey);
+          
+          locations.push({
+            uri: document.uri,
+            range: Range.create(Position.create(i, keyStart), Position.create(i, keyStart + taskKey.length))
+          });
+        }
+        currentPos += item.length + 1; // +1 for comma
+      }
+    }
+  }
+
+  return locations;
+}
+
 // Definition provider
 connection.onDefinition(async (params: TextDocumentPositionParams): Promise<LocationLink[] | null> => {
   const document = documents.get(params.textDocument.uri);
@@ -1376,8 +1452,28 @@ connection.onReferences((params: ReferenceParams): Location[] => {
       
       return references;
     }
+
+    // Check if we're on a task key definition
+    const taskKeyInfo = getTaskKeyAtPosition(document, params.position);
+    if (taskKeyInfo) {
+      const references: Location[] = [];
+      
+      // If includeDeclaration is true, include the task definition itself
+      if (params.context.includeDeclaration) {
+        references.push({
+          uri: document.uri,
+          range: taskKeyInfo.range
+        });
+      }
+      
+      // Find all use references to this task key
+      const useReferences = findTaskUseReferences(document, taskKeyInfo.taskKey);
+      references.push(...useReferences);
+      
+      return references;
+    }
   } catch (error) {
-    connection.console.error(`Error in YAML references provider: ${error instanceof Error ? error.message : String(error)}`);
+    connection.console.error(`Error in references provider: ${error instanceof Error ? error.message : String(error)}`);
   }
   
   return [];
