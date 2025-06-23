@@ -5,11 +5,10 @@
   "version": "0.1.0",
   "publisher": "RWX",
   "icon": "icons/rwx-icon.png",
-  "license": "UNLICENSED",
-  "homepage": "https://github.com/rwx-cloud/mint",
+  "homepage": "https://github.com/rwx-cloud/vscode-extension",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rwx-cloud/mint.git"
+    "url": "git+https://github.com/rwx-cloud/vscode-extension.git"
   },
   "engines": {
     "vscode": "^1.74.0"
@@ -78,13 +77,11 @@
     "postinstall": "cd client && npm install && cd ../server && npm install",
     "test": "sh ./scripts/e2e.sh",
     "package": "vsce package",
-    "bundle-parser": "esbuild ../packages/task-parser/yaml-dsl/parser2.ts --log-level=warning --bundle --platform=node --target=node18 --outfile=./server/support/parser.js",
+    "bundle-parser": "echo 'Parser bundling moved to language server repository'",
     "install-local": "npm run bundle-parser && npm run compile && npm run package && code --install-extension rwx-vscode-extension-0.1.0.vsix --force"
   },
   "dependencies": {
-    "vscode-languageclient": "^8.1.0",
-    "vscode-languageserver": "^8.1.0",
-    "vscode-languageserver-textdocument": "^1.0.8"
+    "vscode-languageclient": "^8.1.0"
   },
   "devDependencies": {
     "@types/node": "18.x",
