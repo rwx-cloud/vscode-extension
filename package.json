@@ -2,9 +2,9 @@
   "name": "rwx-vscode-extension",
   "displayName": "RWX",
   "description": "The RWX extension helps with authoring RWX CI/CD run definition files.",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "publisher": "RWX",
-  "icon": "icons/rwx-icon.png",
+  "icon": "icons/logo.png",
   "homepage": "https://github.com/rwx-cloud/vscode-extension",
   "repository": {
     "type": "git",
@@ -13,6 +13,9 @@
   "engines": {
     "vscode": "^1.74.0"
   },
+  "extensionDependencies": [
+    "redhat.vscode-yaml"
+  ],
   "categories": [
     "Programming Languages"
   ],
@@ -25,38 +28,17 @@
   ],
   "main": "./client/out/extension",
   "contributes": {
-    "languages": [
-      {
-        "id": "rwx-run",
-        "aliases": [
-          "RWX Run YAML",
-          "rwx-run-yaml"
-        ],
-        "configuration": "./language-configuration.json",
-        "icon": {
-          "light": "./icons/rwx-icon.png",
-          "dark": "./icons/rwx-icon.png"
-        },
-        "filenamePatterns": [
-          "**/.mint/*.yml",
-          "**/.mint/*.yaml",
-          "**/.rwx/*.yml",
-          "**/.rwx/*.yaml"
-        ]
-      }
-    ],
-    "grammars": [
-      {
-        "language": "rwx-run",
-        "scopeName": "source.yaml.rwx",
-        "path": "./syntaxes/rwx-run-yaml.tmGrammar.json"
-      }
-    ],
     "commands": [
       {
         "command": "rwx.dumpDebugData",
         "title": "Dump debug data",
         "category": "RWX"
+      }
+    ],
+    "yamlValidation": [
+      {
+        "fileMatch": "**/.mint/**/*.{yml,yaml}",
+        "url": "./server/support/rwx-yaml-schema.json"
       }
     ],
     "iconThemes": [
@@ -65,7 +47,17 @@
         "label": "RWX File Icons",
         "path": "./icons/rwx-icon-theme.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "RWX",
+      "properties": {
+        "rwx.showYamlExtensionPrompt": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show prompt to install YAML extension if not installed"
+        }
+      }
+    }
   },
   "activationEvents": [
     "onLanguage:yaml"
@@ -78,10 +70,13 @@
     "test": "sh ./scripts/e2e.sh",
     "package": "vsce package",
     "bundle-parser": "echo 'Parser bundling moved to language server repository'",
-    "install-local": "npm run bundle-parser && npm run compile && npm run package && code --install-extension rwx-vscode-extension-0.1.0.vsix --force"
+    "install-local": "npm run bundle-parser && npm run compile && npm run package && code --install-extension rwx-vscode-extension-0.1.2.vsix --force"
   },
   "dependencies": {
-    "vscode-languageclient": "^8.1.0"
+    "vscode-languageclient": "^8.1.0",
+    "vscode-languageserver": "^8.1.0",
+    "vscode-languageserver-textdocument": "^1.0.8",
+    "yaml": "^2.3.0"
   },
   "devDependencies": {
     "@types/node": "18.x",
