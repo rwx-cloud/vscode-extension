@@ -2,7 +2,7 @@
   "name": "rwx-vscode-extension",
   "displayName": "RWX",
   "description": "The RWX extension helps with authoring RWX CI/CD run definition files.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "RWX",
   "icon": "icons/logo.png",
   "homepage": "https://github.com/rwx-cloud/vscode-extension",
@@ -39,6 +39,10 @@
       {
         "fileMatch": "**/.mint/**/*.{yml,yaml}",
         "url": "./server/support/rwx-yaml-schema.json"
+      },
+      {
+        "fileMatch": "**/.rwx/**/*.{yml,yaml}",
+        "url": "./server/support/rwx-yaml-schema.json"
       }
     ],
     "iconThemes": [
@@ -55,6 +59,41 @@
           "type": "boolean",
           "default": true,
           "description": "Show prompt to install YAML extension if not installed"
+        },
+        "yaml.completion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable YAML autocompletion"
+        },
+        "yaml.suggest.parentSkeletonSelectedFirst": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show property suggestions immediately without requiring parent skeleton selection"
+        },
+        "editor.suggest.showDocumentation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show documentation in suggestion widget"
+        },
+        "[yaml]": {
+          "type": "object",
+          "default": {
+            "editor.quickSuggestions": {
+              "other": true,
+              "comments": false,
+              "strings": true
+            },
+            "editor.suggest.insertMode": "replace",
+            "editor.suggest.showStatusBar": true,
+            "editor.suggest.showIcons": true,
+            "editor.suggest.showSnippets": true,
+            "editor.suggest.showWords": false,
+            "editor.suggest.showKeywords": false,
+            "editor.suggest.showDocumentation": true,
+            "editor.suggest.localityBonus": true,
+            "editor.suggest.shareSuggestSelections": false
+          },
+          "description": "Language-specific editor settings for YAML files to enable automatic suggestions with documentation"
         }
       }
     }
@@ -70,7 +109,7 @@
     "test": "sh ./scripts/e2e.sh",
     "package": "vsce package",
     "bundle-parser": "echo 'Parser bundling moved to language server repository'",
-    "install-local": "npm run bundle-parser && npm run compile && npm run package && code --install-extension rwx-vscode-extension-0.1.2.vsix --force"
+    "install-local": "npm run bundle-parser && npm run compile && npm run package && code --install-extension rwx-vscode-extension-0.1.3.vsix --force"
   },
   "dependencies": {
     "vscode-languageclient": "^8.1.0",
