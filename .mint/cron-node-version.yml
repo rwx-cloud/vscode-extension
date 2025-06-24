@@ -31,7 +31,7 @@ tasks:
   - key: code
     call: git/clone 1.6.5
     with:
-      repository: https://github.com/rwx-cloud/language-server.git
+      repository: https://github.com/rwx-cloud/vscode-extension.git
       github-access-token: ${{ github['rwx-cloud'].token }}
       ref: ${{ init.ref }}
 

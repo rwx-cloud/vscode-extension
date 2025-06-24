@@ -37,8 +37,9 @@ tasks:
     use: [node, code]
     run: npm install
     filter:
-      - package.json
-      - package-lock.json
+      - package*.json
+      - client/package*.json
+      - server/package*.json
 
   - key: compile
     use: npm-install
@@ -46,3 +47,12 @@ tasks:
     filter:
       - *project-files
       - node_modules
+
+  - key: test
+    use: compile
+    run: npm run test
+    filter:
+      - *project-files
+      - node_modules
+      - scripts
+      - test
