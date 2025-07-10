@@ -24,9 +24,10 @@ tsc -b                  # Direct TypeScript compilation
 
 ### Testing
 
+All tests are in the `server` submodule.
+
 ```bash
-npm test               # Run end-to-end test suite
-sh ./scripts/e2e.sh    # Direct test script execution
+cd server && npm test
 ```
 
 ### Packaging and Installation
