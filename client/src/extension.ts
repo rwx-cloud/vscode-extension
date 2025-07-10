@@ -50,7 +50,7 @@ async function checkYamlExtensionDependency(): Promise<void> {
 export function activate(context: ExtensionContext) {
   // The server is implemented in node
   const serverModule = context.asAbsolutePath(
-    path.join("server", "out", "server.js")
+    path.join("out", "server.js")
   );
 
   // Check if server file exists
