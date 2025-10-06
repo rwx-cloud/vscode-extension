@@ -7,7 +7,7 @@ on:
 
 base:
   os: ubuntu 24.04
-  tag: 1.1
+  tag: 1.2
 
 tasks:
   - key: get-latest-vscode
@@ -29,7 +29,7 @@ tasks:
       LATEST_VSCODE_TAG: ${{ tasks.get-latest-vscode.values.latest-tag }}
 
   - key: code
-    call: git/clone 1.6.7
+    call: git/clone 1.6.9
     with:
       repository: https://github.com/rwx-cloud/vscode-extension.git
       github-access-token: ${{ github['rwx-cloud'].token }}

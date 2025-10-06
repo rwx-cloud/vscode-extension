@@ -6,11 +6,11 @@ on:
 
 base:
   os: ubuntu 24.04
-  tag: 1.1
+  tag: 1.2
 
 tasks:
   - key: code
-    call: git/clone 1.6.7
+    call: git/clone 1.6.9
     with:
       repository: https://github.com/rwx-cloud/vscode-extension.git
       github-access-token: ${{ github['rwx-cloud'].token }}
@@ -21,7 +21,7 @@ tasks:
     call: rwx/tool-versions 1.0.4
 
   - key: node
-    call: nodejs/install 1.1.7
+    call: nodejs/install 1.1.9
     with:
       node-version: ${{ tasks.tool-versions.values.nodejs }}
 
