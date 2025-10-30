@@ -10,7 +10,7 @@ on:
 
 tasks:
   - key: code
-    call: git/clone 1.6.9
+    call: git/clone 1.6.10
     with:
       repository: https://github.com/rwx-cloud/vscode-extension.git
       github-access-token: ${{ github['rwx-cloud'].token }}
@@ -74,7 +74,6 @@ tasks:
     cache: false
     use: [package]
     run: |
-      npx vsce publish rwx-vscode-extension-${{ tasks.extension-version.values.version }}.vsix -p ${{ vaults.vscode-extension_main.secrets.VSCE_PAT }}
+      npx vsce publish --packagePath rwx-vscode-extension-${{ tasks.extension-version.values.version }}.vsix -p ${{ vaults.vscode-extension_main.secrets.VSCE_PAT }}
     filter:
       - rwx-vscode-extension-${{ tasks.extension-version.values.version }}.vsix
-      - package.json
