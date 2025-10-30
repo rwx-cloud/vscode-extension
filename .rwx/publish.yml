@@ -1,0 +1,79 @@
+base:
+  os: ubuntu 24.04
+  tag: 1.1
+
+on:
+  dispatch:
+    - key: publish-vscode-extension
+      init:
+        commit-sha: ${{ event.git.sha }}
+
+tasks:
+  - key: code
+    call: git/clone 1.6.9
+    with:
+      repository: https://github.com/rwx-cloud/vscode-extension.git
+      github-access-token: ${{ github['rwx-cloud'].token }}
+      ref: ${{ init.ref }}
+
+  - key: tool-versions
+    use: [code]
+    call: rwx/tool-versions 1.0.4
+
+  - key: node
+    call: nodejs/install 1.1.9
+    with:
+      node-version: ${{ tasks.tool-versions.values.nodejs }}
+
+  - key: npm-install
+    use: [node, code]
+    run: npm install
+    filter:
+      - package*.json
+      - client/package*.json
+      - server/package*.json
+
+  - key: compile
+    use: npm-install
+    run: npm run compile
+    filter:
+      - client
+      - icons
+      - server
+      - syntaxes
+      - "*.json"
+      - esbuild.config.js
+      - node_modules
+
+  - key: extension-version
+    use: [code]
+    run: |
+      version=$(jq -r .version package.json)
+      echo $version >> $RWX_VALUES/version
+
+  - key: package
+    after: [compile, extension-version]
+    use: npm-install
+    run: |
+      npm run package
+    outputs:
+      artifacts:
+        - key: vscode-extension
+          path: rwx-vscode-extension-${{ tasks.extension-version.values.version }}.vsix
+
+  - key: publish-to-open-vsx-marketplace
+    cache: false
+    use: [package]
+    run: |
+      npx ovsx create-namespace rwx -p ${{ vaults.vscode-extension_main.secrets.OVSX_PAT }} || true
+      npx ovsx publish rwx-vscode-extension-${{ tasks.extension-version.values.version }}.vsix -p ${{ vaults.vscode-extension_main.secrets.OVSX_PAT }}
+    filter:
+      - rwx-vscode-extension-${{ tasks.extension-version.values.version }}.vsix
+
+  - key: publish-to-vscode-marketplace
+    cache: false
+    use: [package]
+    run: |
+      npx vsce publish rwx-vscode-extension-${{ tasks.extension-version.values.version }}.vsix -p ${{ vaults.vscode-extension_main.secrets.VSCE_PAT }}
+    filter:
+      - rwx-vscode-extension-${{ tasks.extension-version.values.version }}.vsix
