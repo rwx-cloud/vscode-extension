@@ -14,7 +14,7 @@ tasks:
     with:
       repository: https://github.com/rwx-cloud/vscode-extension.git
       github-access-token: ${{ github['rwx-cloud'].token }}
-      ref: ${{ init.ref }}
+      ref: ${{ init.commit-sha }}
 
   - key: tool-versions
     use: [code]
