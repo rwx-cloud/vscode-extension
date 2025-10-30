@@ -77,3 +77,4 @@ tasks:
       npx vsce publish rwx-vscode-extension-${{ tasks.extension-version.values.version }}.vsix -p ${{ vaults.vscode-extension_main.secrets.VSCE_PAT }}
     filter:
       - rwx-vscode-extension-${{ tasks.extension-version.values.version }}.vsix
+      - package.json
