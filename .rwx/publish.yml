@@ -10,7 +10,7 @@ on:
 
 tasks:
   - key: code
-    call: git/clone 1.9.0
+    call: git/clone 1.9.3
     with:
       repository: https://github.com/rwx-cloud/vscode-extension.git
       github-access-token: ${{ github['rwx-cloud'].token }}
