@@ -10,7 +10,7 @@ on:
 
 tasks:
   - key: code
-    call: git/clone 1.9.5
+    call: git/clone 2.0.0
     with:
       repository: https://github.com/rwx-cloud/vscode-extension.git
       github-access-token: ${{ github['rwx-cloud'].token }}
@@ -18,7 +18,7 @@ tasks:
 
   - key: tool-versions
     use: [code]
-    call: rwx/tool-versions 1.0.5
+    call: rwx/tool-versions 1.0.6
 
   - key: node
     call: nodejs/install 1.1.11
