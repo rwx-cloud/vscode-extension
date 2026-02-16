@@ -29,7 +29,7 @@ tasks:
       LATEST_VSCODE_TAG: ${{ tasks.get-latest-vscode.values.latest-tag }}
 
   - key: code
-    call: git/clone 2.0.0
+    call: git/clone 2.0.3
     with:
       repository: https://github.com/rwx-cloud/vscode-extension.git
       github-token: ${{ github['rwx-cloud'].token }}
