@@ -29,7 +29,6 @@ tasks:
       echo "$LATEST_TAG" > $RWX_VALUES/latest-tag
 
   - key: get-vscode-node-version
-    use: get-latest-vscode
     run: |
       NVMRC_URL="https://raw.githubusercontent.com/microsoft/vscode/${LATEST_VSCODE_TAG}/.nvmrc"
       NODE_VERSION=$(curl -s "$NVMRC_URL")
@@ -39,7 +38,7 @@ tasks:
       LATEST_VSCODE_TAG: ${{ tasks.get-latest-vscode.values.latest-tag }}
 
   - key: update-tool-versions
-    use: [code, tool-versions, get-vscode-node-version]
+    use: code
     run: |
       echo "$RWX_RUN_URL" > "$RWX_VALUES/run-url"
       echo "Current Node version: $CURRENT_NODE_VERSION"
