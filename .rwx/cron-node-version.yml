@@ -2,48 +2,72 @@ on:
   cron:
     - key: check-node-version
       schedule: "0 7 * * 1 America/New_York"
-      init:
-        ref: ${{ event.git.sha }}
 
 base:
   image: ubuntu:24.04
   config: rwx/base 1.0.0
 
 tasks:
-  - key: get-latest-vscode
-    cache: false
-    run: |
-      LATEST_TAG=$(curl -s https://api.github.com/repos/microsoft/vscode/releases/latest | jq -r .tag_name)
-      echo "Latest tag is $LATEST_TAG"
-      echo "$LATEST_TAG" > $RWX_VALUES/latest-tag
-
-  - key: get-latest-version
-    run: |
-      NVMRC_URL="https://raw.githubusercontent.com/microsoft/vscode/${LATEST_VSCODE_TAG}/.nvmrc"
-      NODE_VERSION=$(curl -s "$NVMRC_URL")
-
-      echo "Latest VS Code release: $LATEST_VSCODE_TAG"
-      echo "Node.js version from .nvmrc: $NODE_VERSION"
-      echo "$NODE_VERSION" > $RWX_VALUES/node-version
-    env:
-      LATEST_VSCODE_TAG: ${{ tasks.get-latest-vscode.values.latest-tag }}
-
   - key: code
     call: git/clone 2.0.3
     with:
       repository: https://github.com/rwx-cloud/vscode-extension.git
       github-token: ${{ github['rwx-cloud'].token }}
-      ref: ${{ init.ref }}
+      ref: main
+      preserve-git-dir: true
 
   - key: tool-versions
-    use: [code]
+    use: code
     call: rwx/tool-versions 1.0.6
+    filter: [.tool-versions]
 
-  - key: compare-version
+  - key: get-latest-vscode
+    cache: false
     run: |
-      echo "VS Code Node version: $VSCODE_NODE_VERSION"
-      echo "Project Node version: $PROJECT_NODE_VERSION"
-      test "$VSCODE_NODE_VERSION" = "$PROJECT_NODE_VERSION"
+      LATEST_TAG=$(curl -s https://api.github.com/repos/microsoft/vscode/releases/latest | jq -r .tag_name)
+      echo "Latest VS Code tag: $LATEST_TAG"
+      echo "$LATEST_TAG" > $RWX_VALUES/latest-tag
+
+  - key: get-vscode-node-version
+    use: get-latest-vscode
+    run: |
+      NVMRC_URL="https://raw.githubusercontent.com/microsoft/vscode/${LATEST_VSCODE_TAG}/.nvmrc"
+      NODE_VERSION=$(curl -s "$NVMRC_URL")
+      echo "VS Code Node.js version: $NODE_VERSION"
+      echo "$NODE_VERSION" > $RWX_VALUES/node-version
     env:
-      VSCODE_NODE_VERSION: ${{ tasks.get-latest-version.values.node-version }}
-      PROJECT_NODE_VERSION: ${{ tasks.tool-versions.values.nodejs }}
+      LATEST_VSCODE_TAG: ${{ tasks.get-latest-vscode.values.latest-tag }}
+
+  - key: update-tool-versions
+    use: [code, tool-versions, get-vscode-node-version]
+    run: |
+      echo "$RWX_RUN_URL" > "$RWX_VALUES/run-url"
+      echo "Current Node version: $CURRENT_NODE_VERSION"
+      echo "VS Code Node version: $VSCODE_NODE_VERSION"
+
+      if [ "$CURRENT_NODE_VERSION" = "$VSCODE_NODE_VERSION" ]; then
+        echo "Node versions match, no update needed"
+      else
+        echo "Updating .tool-versions from $CURRENT_NODE_VERSION to $VSCODE_NODE_VERSION"
+        sed -i "s/^nodejs $CURRENT_NODE_VERSION$/nodejs $VSCODE_NODE_VERSION/" .tool-versions
+        cat .tool-versions
+      fi
+    env:
+      CURRENT_NODE_VERSION: ${{ tasks.tool-versions.values.nodejs }}
+      VSCODE_NODE_VERSION: ${{ tasks.get-vscode-node-version.values.node-version }}
+
+  - key: create-or-update-pr
+    call: github/create-pull-request 1.0.3
+    use: update-tool-versions
+    with:
+      github-token: ${{ github-apps.rwx-cloud-bot.token }}
+      branch-prefix: auto-update-node
+      pull-request-title: "Update Node.js to ${{ tasks.get-vscode-node-version.values.node-version }}"
+      pull-request-body: |
+        This PR was generated from ${{ tasks.update-tool-versions.values.run-url }}
+
+        Updates Node.js version in `.tool-versions` to match the latest VS Code release.
+
+        - **VS Code release:** ${{ tasks.get-latest-vscode.values.latest-tag }}
+        - **Previous Node version:** ${{ tasks.tool-versions.values.nodejs }}
+        - **New Node version:** ${{ tasks.get-vscode-node-version.values.node-version }}
