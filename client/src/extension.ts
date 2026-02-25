@@ -5,7 +5,6 @@ import {
   ExtensionContext,
   window,
   commands,
-  extensions,
 } from "vscode";
 
 import {
@@ -16,36 +15,6 @@ import {
 } from "vscode-languageclient/node";
 
 let client: LanguageClient;
-
-// Check if the YAML extension is installed and prompt user to install if not
-async function checkYamlExtensionDependency(): Promise<void> {
-  const yamlExtension = extensions.getExtension("redhat.vscode-yaml");
-
-  if (!yamlExtension) {
-    // Check if user has chosen not to see this prompt
-    const config = workspace.getConfiguration("rwx");
-    const showPrompt = config.get("showYamlExtensionPrompt", true);
-
-    if (!showPrompt) {
-      return;
-    }
-
-    const choice = await window.showWarningMessage(
-      "The RWX extension requires the YAML extension for schema validation and hover support. Would you like to install it?",
-      "Install YAML Extension",
-      "Not Now",
-      "Don't Show Again"
-    );
-
-    if (choice === "Install YAML Extension") {
-      // Open the extension marketplace for the YAML extension
-      await commands.executeCommand("extension.open", "redhat.vscode-yaml");
-    } else if (choice === "Don't Show Again") {
-      // Store preference to not show this again
-      await config.update("showYamlExtensionPrompt", false, true);
-    }
-  }
-}
 
 export function activate(context: ExtensionContext) {
   // The server is implemented in node
@@ -60,15 +29,6 @@ export function activate(context: ExtensionContext) {
     );
     return;
   }
-
-  // Check for vscode-yaml extension dependency
-  checkYamlExtensionDependency();
-
-  // Alternative: Register schema programmatically if yamlValidation doesn't work
-  // registerYamlSchema();
-
-  // TODO: If yamlValidation still causes conflicts, uncomment this:
-  // registerSchemaManually();
 
   // If the extension is launched in debug mode then the debug server options are used
   // Otherwise the run options are used
