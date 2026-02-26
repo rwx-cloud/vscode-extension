@@ -2,7 +2,7 @@
   "name": "rwx-vscode-extension",
   "displayName": "RWX",
   "description": "The RWX extension helps with authoring RWX CI/CD run definition files.",
-  "version": "0.1.10",
+  "version": "0.2.0",
   "publisher": "RWX",
   "icon": "icons/logo.png",
   "homepage": "https://github.com/rwx-cloud/vscode-extension",
