@@ -13,9 +13,7 @@
   "engines": {
     "vscode": "^1.74.0"
   },
-  "extensionDependencies": [
-    "redhat.vscode-yaml"
-  ],
+  "extensionDependencies": [],
   "categories": [
     "Programming Languages"
   ],
@@ -35,24 +33,9 @@
         "category": "RWX"
       }
     ],
-    "yamlValidation": [
-      {
-        "fileMatch": "**/.mint/**/*.{yml,yaml}",
-        "url": "./server/support/rwx-yaml-schema.json"
-      },
-      {
-        "fileMatch": "**/.rwx/**/*.{yml,yaml}",
-        "url": "./server/support/rwx-yaml-schema.json"
-      }
-    ],
     "configuration": {
       "title": "RWX",
       "properties": {
-        "rwx.showYamlExtensionPrompt": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show prompt to install YAML extension if not installed"
-        },
         "yaml.completion": {
           "type": "boolean",
           "default": true,
