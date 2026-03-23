@@ -9,7 +9,7 @@ base:
 
 tasks:
   - key: code
-    call: git/clone 2.0.6
+    call: git/clone 2.0.7
     with:
       repository: https://github.com/rwx-cloud/vscode-extension.git
       github-token: ${{ github['rwx-cloud'].token }}
@@ -56,7 +56,7 @@ tasks:
       VSCODE_NODE_VERSION: ${{ tasks.get-vscode-node-version.values.node-version }}
 
   - key: create-or-update-pr
-    call: github/create-pull-request 1.0.4
+    call: github/create-pull-request 1.0.5
     use: update-tool-versions
     with:
       github-token: ${{ github-apps.rwx-cloud-bot.token }}
