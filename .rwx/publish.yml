@@ -6,7 +6,7 @@ on:
 
 base:
   image: ubuntu:24.04
-  config: rwx/base 1.0.3
+  config: rwx/base 1.1.0
 
 tasks:
   - key: code
@@ -20,7 +20,7 @@ tasks:
     call: rwx/tool-versions 1.0.7
 
   - key: node
-    call: nodejs/install 1.1.13
+    call: nodejs/install 1.1.14
     with:
       node-version: ${{ tasks.tool-versions.values.nodejs }}
 
