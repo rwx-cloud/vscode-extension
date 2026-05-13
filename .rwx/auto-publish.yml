@@ -1,0 +1,63 @@
+on:
+  github:
+    push:
+      if: ${{ event.git.branch == "main" }}
+      init:
+        commit-sha: ${{ event.git.sha }}
+        before-sha: ${{ event.github.push.before }}
+
+base:
+  image: ubuntu:24.04
+  config: rwx/base 1.1.0
+
+tasks:
+  - key: code
+    call: git/clone 2.0.7
+    with:
+      repository: https://github.com/rwx-cloud/vscode-extension.git
+      ref: ${{ init.commit-sha }}
+      preserve-git-dir: true
+      fetch-full-depth: true
+
+  - key: rwx-cli
+    call: rwx/install-cli 4.0.4
+
+  - key: check-version-changed
+    use: code
+    cache: false
+    run: |
+      current_version=$(jq -r .version package.json)
+      echo "Current version: $current_version"
+
+      if ! git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+        echo "Previous commit $BEFORE_SHA is unavailable; treating as version change"
+        echo "true" > "$RWX_VALUES/changed"
+        echo "$current_version" > "$RWX_VALUES/version"
+        exit 0
+      fi
+
+      previous_version=$(git show "$BEFORE_SHA:package.json" 2>/dev/null | jq -r .version || echo "")
+      echo "Previous version: $previous_version"
+
+      if [ "$current_version" != "$previous_version" ]; then
+        echo "true" > "$RWX_VALUES/changed"
+      else
+        echo "false" > "$RWX_VALUES/changed"
+      fi
+      echo "$current_version" > "$RWX_VALUES/version"
+    env:
+      BEFORE_SHA: ${{ init.before-sha }}
+
+  - key: dispatch-publish
+    use: rwx-cli
+    after: check-version-changed
+    if: ${{ tasks.check-version-changed.values.changed == "true" }}
+    cache: false
+    run: |
+      rwx dispatch publish-vscode-extension \
+        --ref "$COMMIT_SHA" \
+        --title "Publish vscode-extension v$VERSION"
+    env:
+      RWX_ACCESS_TOKEN: ${{ secrets.RWX_ACCESS_TOKEN }}
+      COMMIT_SHA: ${{ init.commit-sha }}
+      VERSION: ${{ tasks.check-version-changed.values.version }}
