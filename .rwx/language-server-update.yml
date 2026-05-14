@@ -1,0 +1,73 @@
+on:
+  dispatch:
+    - key: vscode-extension-language-server-update
+      init:
+        commit-sha: ${{ event.git.sha }}
+
+base:
+  image: ubuntu:24.04
+  config: rwx/base 1.1.0
+
+tasks:
+  - key: code
+    call: git/clone 2.0.7
+    with:
+      repository: https://github.com/rwx-cloud/vscode-extension.git
+      ref: ${{ init.commit-sha }}
+      preserve-git-dir: true
+
+  - key: tool-versions
+    use: code
+    call: rwx/tool-versions 1.0.7
+    filter: [.tool-versions]
+
+  - key: node
+    call: nodejs/install 1.1.14
+    with:
+      node-version: ${{ tasks.tool-versions.values.nodejs }}
+
+  - key: update-language-server
+    use: [code, node]
+    cache: false
+    run: |
+      echo "$RWX_RUN_URL" > "$RWX_VALUES/run-url"
+
+      previous_sha=$(git -C server rev-parse HEAD)
+      echo "Previous language server SHA: $previous_sha"
+      echo "$previous_sha" > "$RWX_VALUES/previous-sha"
+
+      git -C server fetch origin main
+      new_sha=$(git -C server rev-parse FETCH_HEAD)
+      echo "Latest language server SHA: $new_sha"
+      echo "$new_sha" > "$RWX_VALUES/new-sha"
+
+      if [ "$previous_sha" = "$new_sha" ]; then
+        echo "Language server is already up to date"
+        jq -r .version package.json > "$RWX_VALUES/new-version"
+        exit 0
+      fi
+
+      git -C server reset --hard "$new_sha"
+
+      npm version patch --no-git-tag-version
+      new_version=$(jq -r .version package.json)
+      echo "Bumped extension version to $new_version"
+      echo "$new_version" > "$RWX_VALUES/new-version"
+
+  - key: create-or-update-pr
+    call: github/create-pull-request 1.0.7
+    use: update-language-server
+    with:
+      github-token: ${{ github-apps.rwx-cloud-bot.token }}
+      branch-prefix: language-server-update
+      pull-request-title: Update language-server-ref
+      enable-auto-merge: true
+      reviewers: rwx-cloud/engineers
+      pull-request-body: |
+        This PR was generated from ${{ tasks.update-language-server.values.run-url }}.
+
+        Updates the `server` submodule to the latest commit on `main` and bumps the patch version of the extension so the publish dispatch fires on merge.
+
+        - **Previous language server SHA:** ${{ tasks.update-language-server.values.previous-sha }}
+        - **New language server SHA:** ${{ tasks.update-language-server.values.new-sha }}
+        - **Extension version:** ${{ tasks.update-language-server.values.new-version }}
