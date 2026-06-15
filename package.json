@@ -97,8 +97,8 @@
     "@types/node": "18.x",
     "@types/vscode": "^1.74.0",
     "@vscode/test-electron": "^2.3.0",
-    "esbuild": "^0.25.6",
-    "typescript": "^5.0.0",
+    "esbuild": "^0.28.1",
+    "typescript": "^6.0.3",
     "vsce": "^2.15.0"
   }
 }
